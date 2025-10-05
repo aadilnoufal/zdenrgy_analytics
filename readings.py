@@ -235,6 +235,7 @@ def api_data():
 			"temp": r["temp"],
 			"rh": r["rh"],
 			"lux": r["lux"],
+			"irradiance": r["lux"] / 127.0,  # Convert lux to W/m² (127 lux = 1 W/m²)
 		}
 		for r in subset
 	]
@@ -257,6 +258,7 @@ def dashboard():  # type: ignore
 		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
 		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; }
 		.grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
+		.grid-2x2 { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem 1.1rem 1.6rem; box-shadow:0 4px 16px -6px #000a; }
 		.card h2 { margin:0 0 .6rem; font-size:1.05rem; font-weight:500; }
 		.chart-container { position:relative; height:280px; width:100%; }
@@ -279,7 +281,14 @@ def dashboard():  # type: ignore
 
 		async function fetchData() {
 			const resp = await fetch(`/api/data?limit=1000&minutes=${currentWindow}`);
-			return await resp.json();
+			const data = await resp.json();
+			// Calculate irradiance if not present (for backward compatibility)
+			data.forEach(r => {
+				if (!r.irradiance) {
+					r.irradiance = r.lux / 127.0;
+				}
+			});
+			return data;
 		}
 
 		function buildSeries(raw, field) {
@@ -338,24 +347,29 @@ def dashboard():  # type: ignore
 					charts.temp = makeChart(document.getElementById('chart-temp'), 'Temp', '#ff7369', '°C');
 					charts.rh = makeChart(document.getElementById('chart-rh'), 'RH', '#4ecdc4', '%');
 					charts.lux = makeChart(document.getElementById('chart-lux'), 'Lux', '#ffd166', 'lux');
+					charts.irradiance = makeChart(document.getElementById('chart-irradiance'), 'Irradiance', '#a78bfa', 'W/m²');
 				}
 				const tempData = buildSeries(raw, 'temp');
 				const rhData = buildSeries(raw, 'rh');
 				const luxData = buildSeries(raw, 'lux');
+				const irradianceData = buildSeries(raw, 'irradiance');
 				
 				// Update chart data
 				charts.temp.data.datasets[0].data = tempData;
 				charts.rh.data.datasets[0].data = rhData;
 				charts.lux.data.datasets[0].data = luxData;
+				charts.irradiance.data.datasets[0].data = irradianceData;
 				
 				// Auto-scale Y axis with padding
 				updateYScale(charts.temp, tempData);
 				updateYScale(charts.rh, rhData);
 				updateYScale(charts.lux, luxData);
+				updateYScale(charts.irradiance, irradianceData);
 				
 				charts.temp.update();
 				charts.rh.update();
 				charts.lux.update();
+				charts.irradiance.update();
 				updateMeta(raw);
 				updateTable(raw);
 			} catch (e) { console.error(e); }
@@ -378,6 +392,7 @@ def dashboard():  # type: ignore
 			document.getElementById('latest-temp').textContent = latest.temp.toFixed(2) + ' °C';
 			document.getElementById('latest-rh').textContent = latest.rh.toFixed(2) + ' %';
 			document.getElementById('latest-lux').textContent = latest.lux.toFixed(2) + ' lx';
+			document.getElementById('latest-irradiance').textContent = latest.irradiance.toFixed(3) + ' W/m²';
 			document.getElementById('latest-time').textContent = new Date(latest.time).toLocaleString();
 		}
 
@@ -393,6 +408,7 @@ def dashboard():  # type: ignore
 					<td>${r.temp.toFixed(2)}</td>
 					<td>${r.rh.toFixed(2)}</td>
 					<td>${r.lux.toFixed(2)}</td>
+					<td>${r.irradiance.toFixed(3)}</td>
 				`;
 				tbody.appendChild(tr);
 			}
@@ -417,6 +433,7 @@ def dashboard():  # type: ignore
 		<div class="pill">Temp: <span id="latest-temp">—</span></div>
 		<div class="pill">Humidity: <span id="latest-rh">—</span></div>
 		<div class="pill">Lux: <span id="latest-lux">—</span></div>
+		<div class="pill">Irradiance: <span id="latest-irradiance">—</span></div>
 		<div class="pill">Refresh: 5s</div>
 		<div class="pill">Window: 
 			<select id="window-select" style="background:#1c1f26;color:#eee;border:1px solid #2a2f3a;border-radius:6px;padding:2px 6px;">
@@ -429,7 +446,7 @@ def dashboard():  # type: ignore
 			</select>
 		</div>
 	</div>
-	<div class="grid">
+	<div class="grid-2x2">
 		<div class="card">
 			<h2>Temperature</h2>
 			<div class="chart-container">
@@ -448,6 +465,12 @@ def dashboard():  # type: ignore
 				<canvas id="chart-lux"></canvas>
 			</div>
 		</div>
+		<div class="card">
+			<h2>Solar Irradiance (W/m²)</h2>
+			<div class="chart-container">
+				<canvas id="chart-irradiance"></canvas>
+			</div>
+		</div>
 	</div>
 	<div class="table-card">
 		<h2>Live Data (Last 50 Readings)</h2>
@@ -458,6 +481,7 @@ def dashboard():  # type: ignore
 					<th>Temperature (°C)</th>
 					<th>Humidity (%)</th>
 					<th>Lux</th>
+					<th>Irradiance (W/m²)</th>
 				</tr>
 			</thead>
 			<tbody id="data-tbody">

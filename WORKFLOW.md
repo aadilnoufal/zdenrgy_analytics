@@ -90,13 +90,13 @@ sudo netstat -tlnp | grep -E '5000|6000'
 
 ## 📋 Quick Reference Card
 
-| Task | Windows Command | Droplet Command |
-|------|----------------|-----------------|
-| **Edit code** | Edit in VS Code | - |
-| **Save & Push** | `git add . && git commit -m "msg" && git push` | - |
-| **Deploy** | - | `cd ~/zdenrgy_analytics && ./deploy.sh` |
-| **View logs** | - | `sudo journalctl -u zdenergy -f` |
-| **Restart** | - | `sudo systemctl restart zdenergy` |
+| Task            | Windows Command                                | Droplet Command                         |
+| --------------- | ---------------------------------------------- | --------------------------------------- |
+| **Edit code**   | Edit in VS Code                                | -                                       |
+| **Save & Push** | `git add . && git commit -m "msg" && git push` | -                                       |
+| **Deploy**      | -                                              | `cd ~/zdenrgy_analytics && ./deploy.sh` |
+| **View logs**   | -                                              | `sudo journalctl -u zdenergy -f`        |
+| **Restart**     | -                                              | `sudo systemctl restart zdenergy`       |
 
 ---
 
@@ -105,6 +105,7 @@ sudo netstat -tlnp | grep -E '5000|6000'
 Let's say you want to change the temperature display:
 
 **1. On Windows:**
+
 ```powershell
 cd C:\Users\MEHAK-AADIL\Desktop\python\zdenergy
 
@@ -117,6 +118,7 @@ git push
 ```
 
 **2. On Droplet:**
+
 ```bash
 ssh root@YOUR_DROPLET_IP
 cd ~/zdenrgy_analytics
@@ -130,6 +132,7 @@ cd ~/zdenrgy_analytics
 ## ⚠️ Troubleshooting
 
 ### Service won't start after update
+
 ```bash
 # Check logs for errors
 sudo journalctl -u zdenergy -n 50
@@ -141,6 +144,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 readings:app
 ```
 
 ### Port already in use
+
 ```bash
 # See what's using the port
 sudo netstat -tlnp | grep 5000
@@ -151,6 +155,7 @@ sudo systemctl restart zdenergy
 ```
 
 ### Can't access from browser
+
 ```bash
 # Check firewall
 sudo ufw status
@@ -175,6 +180,7 @@ sudo ufw allow 6000/tcp
 ## 📞 Need Help?
 
 If something goes wrong:
+
 1. Check service status: `sudo systemctl status zdenergy`
 2. Check logs: `sudo journalctl -u zdenergy -n 100`
 3. Try manual run: `cd ~/zdenrgy_analytics && source venv/bin/activate && gunicorn readings:app`
