@@ -256,7 +256,9 @@ def dashboard():  # type: ignore
 	<style>
 		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
 		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; }
+		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
+		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
+		.nav-btn:hover { background:#3a4150; }
 		.grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.grid-2x2 { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem 1.1rem 1.6rem; box-shadow:0 4px 16px -6px #000a; }
@@ -430,7 +432,10 @@ def dashboard():  # type: ignore
 	</script>
 </head>
 <body>
-	<h1>Live Sensor Dashboard</h1>
+	<h1>
+		<span>Live Sensor Dashboard</span>
+		<a href="/kpi" class="nav-btn">View KPIs</a>
+	</h1>
 	<div class="meta">
 		<div class="pill">Latest Time: <span id="latest-time">—</span></div>
 		<div class="pill">Temp: <span id="latest-temp">—</span></div>
@@ -492,6 +497,36 @@ def dashboard():  # type: ignore
 		</table>
 	</div>
 	<footer>Data updates automatically. Built with Flask + Chart.js. Upgrade to WebSockets later for sub-second latency.</footer>
+</body>
+</html>
+				"""
+		)
+
+
+@app.route("/kpi")
+def kpi_page():  # type: ignore
+		"""KPI page."""
+		return (
+				"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<title>KPI Dashboard</title>
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<style>
+		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
+		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
+		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
+		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
+		.nav-btn:hover { background:#3a4150; }
+	</style>
+</head>
+<body>
+	<h1>
+		<span>KPI</span>
+		<a href="/" class="nav-btn">← Back to Dashboard</a>
+	</h1>
 </body>
 </html>
 				"""
