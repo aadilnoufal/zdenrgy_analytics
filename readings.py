@@ -191,31 +191,6 @@ def no_cache(resp):  # type: ignore
 		return resp
 
 
-# --- Background TCP server bootstrap (works under Gunicorn) -----------------
-# When running under Gunicorn, the __main__ block is not executed. To ensure the
-# TCP server is started in production, we start it at module import time in a
-# thread-safe, idempotent way. IMPORTANT: Run Gunicorn with a single worker
-# (e.g. -w 1 --threads 8). Multiple workers would create separate processes with
-# separate memory and cause either port conflicts or split state.
-
-_tcp_started = False
-_tcp_start_lock = threading.Lock()
-
-
-def ensure_tcp_started() -> None:
-	"""Start the TCP server thread exactly once in this process."""
-	global _tcp_started
-	if _tcp_started:
-		return
-	with _tcp_start_lock:
-		if _tcp_started:
-			return
-		thread = threading.Thread(target=tcp_server, daemon=True, name="tcp-server")
-		thread.start()
-		_tcp_started = True
-		print(f"TCP server thread started on port {TCP_PORT}")
-
-
 @app.route("/api/data")
 def api_data():
 	"""Return recent readings as JSON list.
@@ -281,9 +256,7 @@ def dashboard():  # type: ignore
 	<style>
 		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
 		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
-		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
-		.nav-btn:hover { background:#3a4150; }
+		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; }
 		.grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.grid-2x2 { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem 1.1rem 1.6rem; box-shadow:0 4px 16px -6px #000a; }
@@ -457,10 +430,7 @@ def dashboard():  # type: ignore
 	</script>
 </head>
 <body>
-	<h1>
-		<span>Live Sensor Dashboard</span>
-		<a href="/kpi" class="nav-btn">View KPIs</a>
-	</h1>
+	<h1>Live Sensor Dashboard</h1>
 	<div class="meta">
 		<div class="pill">Latest Time: <span id="latest-time">—</span></div>
 		<div class="pill">Temp: <span id="latest-temp">—</span></div>
@@ -528,36 +498,6 @@ def dashboard():  # type: ignore
 		)
 
 
-@app.route("/kpi")
-def kpi_page():  # type: ignore
-		"""KPI page."""
-		return (
-				"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8" />
-	<title>KPI Dashboard</title>
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<style>
-		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
-		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
-		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
-		.nav-btn:hover { background:#3a4150; }
-	</style>
-</head>
-<body>
-	<h1>
-		<span>KPI</span>
-		<a href="/" class="nav-btn">← Back to Dashboard</a>
-	</h1>
-</body>
-</html>
-				"""
-		)
-
-
 @app.route("/api/status")
 def status():  # type: ignore
 		with _data_lock:
@@ -587,8 +527,8 @@ def debug_toggle():  # type: ignore
 
 
 def main():
-		# Safe to call multiple times; starts only once per process
-		ensure_tcp_started()
+		tcp_thread = threading.Thread(target=tcp_server, daemon=True)
+		tcp_thread.start()
 		print(f"Starting Flask web server on port {HTTP_PORT}...")
 		# Enable threaded to handle simultaneous API + dashboard requests
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
@@ -596,7 +536,3 @@ def main():
 
 if __name__ == "__main__":
 		main()
-
-# Ensure TCP server is started when imported by WSGI servers like Gunicorn
-# This must remain at the end of the module so all functions are defined.
-ensure_tcp_started()
