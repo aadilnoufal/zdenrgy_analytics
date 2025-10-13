@@ -11,14 +11,24 @@ Features:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
+import sys
 import threading
 from collections import deque
 from datetime import datetime
 from typing import Deque, Dict, Any, List
 
 from flask import Flask, jsonify, make_response, request
+
+# Configure logging to stdout so systemd can capture it
+logging.basicConfig(
+		level=logging.INFO,
+		format='%(asctime)s [%(levelname)s] %(message)s',
+		handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 
 APP_HOST = "0.0.0.0"
 HTTP_PORT = 5000
@@ -90,15 +100,15 @@ def tcp_server():
 				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 				s.bind((APP_HOST, TCP_PORT))
 				s.listen(5)
-				print(f"TCP Server listening on port {TCP_PORT}...")
+				logger.info(f"✓ TCP Server listening on port {TCP_PORT}...")
 		except OSError as e:
 				# Port already in use by another worker - this is expected with Gunicorn
-				print(f"[INFO] TCP port {TCP_PORT} already in use (another worker has it): {e}")
+				logger.info(f"TCP port {TCP_PORT} already in use (another worker has it): {e}")
 				return
 		
 		while True:
 				client, addr = s.accept()
-				print(f"Gateway connected from {addr}")
+				logger.info(f"Gateway connected from {addr}")
 				buffer = ""
 				try:
 						while True:
@@ -114,7 +124,7 @@ def tcp_server():
 								global bytes_received
 								bytes_received += len(data)
 								if DEBUG:
-										print(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
+										logger.debug(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
 								# Support newline delim (common for gateways)
 								if "\n" in buffer:
 										parts = buffer.split("\n")
@@ -575,7 +585,7 @@ def debug_toggle():  # type: ignore
 def main():
 		tcp_thread = threading.Thread(target=tcp_server, daemon=True)
 		tcp_thread.start()
-		print(f"Starting Flask web server on port {HTTP_PORT}...")
+		logger.info(f"Starting Flask web server on port {HTTP_PORT}...")
 		# Enable threaded to handle simultaneous API + dashboard requests
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
 
@@ -589,10 +599,10 @@ def _start_tcp_server_once():
 								tcp_thread = threading.Thread(target=tcp_server, daemon=True)
 								tcp_thread.start()
 								_tcp_server_started = True
-								print(f"[INFO] TCP server thread started on port {TCP_PORT}")
+								logger.info(f"TCP server thread started for port {TCP_PORT}")
 						except OSError as e:
 								# Another worker already bound to the port, that's OK
-								print(f"[INFO] TCP server already running (another worker): {e}")
+								logger.info(f"TCP server already running (another worker): {e}")
 
 
 # Start TCP server thread when module is imported (for Gunicorn)
