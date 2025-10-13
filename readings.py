@@ -11,6 +11,7 @@ Features:
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 from collections import deque
@@ -37,6 +38,10 @@ messages_parsed = 0
 invalid_messages = 0
 last_valid_raw = ""
 last_invalid_raw = ""
+
+# Flag to ensure TCP server starts only once (for Gunicorn workers)
+_tcp_server_started = False
+_tcp_server_lock = threading.Lock()
 
 
 def parse_reading(raw: str) -> Dict[str, Any] | None:
@@ -80,11 +85,17 @@ def tcp_server():
 
 		Expects newline-delimited JSON objects or single JSON objects per packet.
 		"""
-		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		s.bind((APP_HOST, TCP_PORT))
-		s.listen(5)
-		print(f"TCP Server listening on port {TCP_PORT}...")
+		try:
+				s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+				s.bind((APP_HOST, TCP_PORT))
+				s.listen(5)
+				print(f"TCP Server listening on port {TCP_PORT}...")
+		except OSError as e:
+				# Port already in use by another worker - this is expected with Gunicorn
+				print(f"[INFO] TCP port {TCP_PORT} already in use (another worker has it): {e}")
+				return
+		
 		while True:
 				client, addr = s.accept()
 				print(f"Gateway connected from {addr}")
@@ -569,9 +580,23 @@ def main():
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
 
 
+def _start_tcp_server_once():
+		"""Start TCP server only once, even when multiple Gunicorn workers load the module."""
+		global _tcp_server_started
+		with _tcp_server_lock:
+				if not _tcp_server_started:
+						try:
+								tcp_thread = threading.Thread(target=tcp_server, daemon=True)
+								tcp_thread.start()
+								_tcp_server_started = True
+								print(f"[INFO] TCP server thread started on port {TCP_PORT}")
+						except OSError as e:
+								# Another worker already bound to the port, that's OK
+								print(f"[INFO] TCP server already running (another worker): {e}")
+
+
 # Start TCP server thread when module is imported (for Gunicorn)
-tcp_thread = threading.Thread(target=tcp_server, daemon=True)
-tcp_thread.start()
+_start_tcp_server_once()
 
 
 if __name__ == "__main__":
