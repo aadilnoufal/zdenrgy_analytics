@@ -18,18 +18,11 @@ source venv/bin/activate
 echo "📦 Installing dependencies..."
 pip install -r requirements.txt
 
-# Ensure systemd unit uses a single worker (avoid per-process memory state)
-echo "⚙️ Ensuring systemd unit is up-to-date..."
-if [ -f /etc/systemd/system/zdenergy.service ]; then
-	SERVICE_FILE=/etc/systemd/system/zdenergy.service
-	# Update ExecStart to single worker with threads and correct venv path
-	VENV_BIN="$(pwd)/venv/bin"
-	ESCAPED_VENV_BIN=$(printf '%s\n' "$VENV_BIN" | sed 's:[\\&]:\\\\&:g')
-	sudo sed -i "s#^ExecStart=.*#ExecStart=${ESCAPED_VENV_BIN}/gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 --timeout 120 readings:app#" "$SERVICE_FILE"
-	# Ensure PYTHONUNBUFFERED is present
-	if ! grep -q '^Environment="PYTHONUNBUFFERED=1"' "$SERVICE_FILE"; then
-		sudo sed -i '/^Environment="PATH=/a Environment="PYTHONUNBUFFERED=1"' "$SERVICE_FILE"
-	fi
+# Ensure systemd uses a single Gunicorn worker with threads (safe for TCP thread)
+if grep -q "ExecStart=.*gunicorn" /etc/systemd/system/zdenergy.service; then
+	echo "🔧 Patching systemd unit for single-worker gunicorn..."
+	sudo sed -i 's/ExecStart=.*gunicorn.*/ExecStart='"$(pwd | sed 's/\//\\\//g')"'\/venv\/bin\/gunicorn -w 1 --threads 8 -b 0.0.0.0:5000 --timeout 120 readings:app/' /etc/systemd/system/zdenergy.service || true
+	echo "🔄 Reloading systemd daemon..."
 	sudo systemctl daemon-reload
 fi
 

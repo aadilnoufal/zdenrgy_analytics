@@ -11,24 +11,13 @@ Features:
 from __future__ import annotations
 
 import json
-import logging
-import os
 import socket
-import sys
 import threading
 from collections import deque
 from datetime import datetime
 from typing import Deque, Dict, Any, List
 
 from flask import Flask, jsonify, make_response, request
-
-# Configure logging to stdout so systemd can capture it
-logging.basicConfig(
-		level=logging.INFO,
-		format='%(asctime)s [%(levelname)s] %(message)s',
-		handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger(__name__)
 
 APP_HOST = "0.0.0.0"
 HTTP_PORT = 5000
@@ -48,10 +37,6 @@ messages_parsed = 0
 invalid_messages = 0
 last_valid_raw = ""
 last_invalid_raw = ""
-
-# Flag to ensure TCP server starts only once (for Gunicorn workers)
-_tcp_server_started = False
-_tcp_server_lock = threading.Lock()
 
 
 def parse_reading(raw: str) -> Dict[str, Any] | None:
@@ -95,20 +80,14 @@ def tcp_server():
 
 		Expects newline-delimited JSON objects or single JSON objects per packet.
 		"""
-		try:
-				s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-				s.bind((APP_HOST, TCP_PORT))
-				s.listen(5)
-				logger.info(f"✓ TCP Server listening on port {TCP_PORT}...")
-		except OSError as e:
-				# Port already in use by another worker - this is expected with Gunicorn
-				logger.info(f"TCP port {TCP_PORT} already in use (another worker has it): {e}")
-				return
-		
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		s.bind((APP_HOST, TCP_PORT))
+		s.listen(5)
+		print(f"TCP Server listening on port {TCP_PORT}...")
 		while True:
 				client, addr = s.accept()
-				logger.info(f"Gateway connected from {addr}")
+				print(f"Gateway connected from {addr}")
 				buffer = ""
 				try:
 						while True:
@@ -124,7 +103,7 @@ def tcp_server():
 								global bytes_received
 								bytes_received += len(data)
 								if DEBUG:
-										logger.debug(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
+										print(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
 								# Support newline delim (common for gateways)
 								if "\n" in buffer:
 										parts = buffer.split("\n")
@@ -210,6 +189,31 @@ def no_cache(resp):  # type: ignore
 		resp.headers["Pragma"] = "no-cache"
 		resp.headers["Expires"] = "0"
 		return resp
+
+
+# --- Background TCP server bootstrap (works under Gunicorn) -----------------
+# When running under Gunicorn, the __main__ block is not executed. To ensure the
+# TCP server is started in production, we start it at module import time in a
+# thread-safe, idempotent way. IMPORTANT: Run Gunicorn with a single worker
+# (e.g. -w 1 --threads 8). Multiple workers would create separate processes with
+# separate memory and cause either port conflicts or split state.
+
+_tcp_started = False
+_tcp_start_lock = threading.Lock()
+
+
+def ensure_tcp_started() -> None:
+	"""Start the TCP server thread exactly once in this process."""
+	global _tcp_started
+	if _tcp_started:
+		return
+	with _tcp_start_lock:
+		if _tcp_started:
+			return
+		thread = threading.Thread(target=tcp_server, daemon=True, name="tcp-server")
+		thread.start()
+		_tcp_started = True
+		print(f"TCP server thread started on port {TCP_PORT}")
 
 
 @app.route("/api/data")
@@ -583,31 +587,16 @@ def debug_toggle():  # type: ignore
 
 
 def main():
-		tcp_thread = threading.Thread(target=tcp_server, daemon=True)
-		tcp_thread.start()
-		logger.info(f"Starting Flask web server on port {HTTP_PORT}...")
+		# Safe to call multiple times; starts only once per process
+		ensure_tcp_started()
+		print(f"Starting Flask web server on port {HTTP_PORT}...")
 		# Enable threaded to handle simultaneous API + dashboard requests
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
 
 
-def _start_tcp_server_once():
-		"""Start TCP server only once, even when multiple Gunicorn workers load the module."""
-		global _tcp_server_started
-		with _tcp_server_lock:
-				if not _tcp_server_started:
-						try:
-								tcp_thread = threading.Thread(target=tcp_server, daemon=True)
-								tcp_thread.start()
-								_tcp_server_started = True
-								logger.info(f"TCP server thread started for port {TCP_PORT}")
-						except OSError as e:
-								# Another worker already bound to the port, that's OK
-								logger.info(f"TCP server already running (another worker): {e}")
-
-
-# Start TCP server thread when module is imported (for Gunicorn)
-_start_tcp_server_once()
-
-
 if __name__ == "__main__":
 		main()
+
+# Ensure TCP server is started when imported by WSGI servers like Gunicorn
+# This must remain at the end of the module so all functions are defined.
+ensure_tcp_started()
