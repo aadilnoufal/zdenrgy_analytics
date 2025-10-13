@@ -381,12 +381,9 @@ def dashboard():  # type: ignore
 			const min = Math.min(...values);
 			const max = Math.max(...values);
 			const range = max - min;
-			const padding = Math.max(range * 0.1, 1); // 10% padding or at least 1 unit
-			// Round to whole numbers for cleaner scaling
-			chart.options.scales.y.suggestedMin = Math.floor(min - padding);
-			chart.options.scales.y.suggestedMax = Math.ceil(max + padding);
-			// Set step size to 1 for cleaner grid lines
-			chart.options.scales.y.ticks.stepSize = 1;
+			const padding = range * 0.1 || 1; // 10% padding or 1 if range is 0
+			chart.options.scales.y.suggestedMin = min - padding;
+			chart.options.scales.y.suggestedMax = max + padding;
 		}
 
 		function updateMeta(raw) {
