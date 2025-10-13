@@ -30,7 +30,6 @@ app = Flask(__name__)
 # Thread-safe ring buffer for structured readings
 weather_data: Deque[Dict[str, Any]] = deque(maxlen=MAX_SAMPLES)
 _data_lock = threading.Lock()
-_tcp_thread_started = False
 
 # Debug / metrics state
 bytes_received = 0
@@ -192,6 +191,31 @@ def no_cache(resp):  # type: ignore
 		return resp
 
 
+# --- Background TCP server bootstrap (works under Gunicorn) -----------------
+# When running under Gunicorn, the __main__ block is not executed. To ensure the
+# TCP server is started in production, we start it at module import time in a
+# thread-safe, idempotent way. IMPORTANT: Run Gunicorn with a single worker
+# (e.g. -w 1 --threads 8). Multiple workers would create separate processes with
+# separate memory and cause either port conflicts or split state.
+
+_tcp_started = False
+_tcp_start_lock = threading.Lock()
+
+
+def ensure_tcp_started() -> None:
+	"""Start the TCP server thread exactly once in this process."""
+	global _tcp_started
+	if _tcp_started:
+		return
+	with _tcp_start_lock:
+		if _tcp_started:
+			return
+		thread = threading.Thread(target=tcp_server, daemon=True, name="tcp-server")
+		thread.start()
+		_tcp_started = True
+		print(f"TCP server thread started on port {TCP_PORT}")
+
+
 @app.route("/api/data")
 def api_data():
 	"""Return recent readings as JSON list.
@@ -257,7 +281,9 @@ def dashboard():  # type: ignore
 	<style>
 		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
 		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; }
+		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
+		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
+		.nav-btn:hover { background:#3a4150; }
 		.grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.grid-2x2 { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
 		.card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem 1.1rem 1.6rem; box-shadow:0 4px 16px -6px #000a; }
@@ -382,9 +408,12 @@ def dashboard():  # type: ignore
 			const min = Math.min(...values);
 			const max = Math.max(...values);
 			const range = max - min;
-			const padding = range * 0.1 || 1; // 10% padding or 1 if range is 0
-			chart.options.scales.y.suggestedMin = min - padding;
-			chart.options.scales.y.suggestedMax = max + padding;
+			const padding = Math.max(range * 0.1, 1); // 10% padding or at least 1 unit
+			// Round to whole numbers for cleaner scaling
+			chart.options.scales.y.suggestedMin = Math.floor(min - padding);
+			chart.options.scales.y.suggestedMax = Math.ceil(max + padding);
+			// Set step size to 1 for cleaner grid lines
+			chart.options.scales.y.ticks.stepSize = 1;
 		}
 
 		function updateMeta(raw) {
@@ -428,7 +457,10 @@ def dashboard():  # type: ignore
 	</script>
 </head>
 <body>
-	<h1>Live Sensor Dashboard</h1>
+	<h1>
+		<span>Live Sensor Dashboard</span>
+		<a href="/kpi" class="nav-btn">View KPIs</a>
+	</h1>
 	<div class="meta">
 		<div class="pill">Latest Time: <span id="latest-time">—</span></div>
 		<div class="pill">Temp: <span id="latest-temp">—</span></div>
@@ -496,6 +528,36 @@ def dashboard():  # type: ignore
 		)
 
 
+@app.route("/kpi")
+def kpi_page():  # type: ignore
+		"""KPI page."""
+		return (
+				"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<title>KPI Dashboard</title>
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<style>
+		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
+		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
+		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
+		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
+		.nav-btn:hover { background:#3a4150; }
+	</style>
+</head>
+<body>
+	<h1>
+		<span>KPI</span>
+		<a href="/" class="nav-btn">← Back to Dashboard</a>
+	</h1>
+</body>
+</html>
+				"""
+		)
+
+
 @app.route("/api/status")
 def status():  # type: ignore
 		with _data_lock:
@@ -523,28 +585,10 @@ def debug_toggle():  # type: ignore
 		DEBUG = not DEBUG
 		return jsonify({"debug": DEBUG})
 
-def start_tcp_thread_once() -> None:
-	"""Start the TCP ingest server in a background thread once per process.
-
-	This ensures ingestion runs when served by Gunicorn (WSGI) as well.
-	Note: run with a single Gunicorn worker so only one process binds TCP_PORT.
-	"""
-	global _tcp_thread_started
-	if not _tcp_thread_started:
-		t = threading.Thread(target=tcp_server, daemon=True)
-		t.start()
-		_tcp_thread_started = True
-
-
-# When running under Gunicorn, the module is imported and __main__ isn't executed.
-# Use Flask hook to start the TCP server on first request in that process.
-@app.before_first_request
-def _start_background_ingest():  # type: ignore
-	start_tcp_thread_once()
-
 
 def main():
-		start_tcp_thread_once()
+		# Safe to call multiple times; starts only once per process
+		ensure_tcp_started()
 		print(f"Starting Flask web server on port {HTTP_PORT}...")
 		# Enable threaded to handle simultaneous API + dashboard requests
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
@@ -552,3 +596,7 @@ def main():
 
 if __name__ == "__main__":
 		main()
+
+# Ensure TCP server is started when imported by WSGI servers like Gunicorn
+# This must remain at the end of the module so all functions are defined.
+ensure_tcp_started()

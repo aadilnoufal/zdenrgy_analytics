@@ -8,8 +8,10 @@ Type=notify
 User=your-username
 WorkingDirectory=/home/your-username/zdenergy
 Environment="PATH=/home/your-username/zdenergy/venv/bin"
-Environment="THREADS=8"
-ExecStart=/home/your-username/zdenergy/venv/bin/gunicorn --workers 1 --threads ${THREADS} -b 0.0.0.0:5000 --timeout 120 readings:app
+; IMPORTANT: Use a single worker with threads so the TCP server (port 6000)
+; runs exactly once per process and shares in-memory state with Flask routes.
+; Multiple workers would cause port binding conflicts or split buffers.
+ExecStart=/home/your-username/zdenergy/venv/bin/gunicorn -w 1 --threads 8 -b 0.0.0.0:5000 --timeout 120 readings:app
 Restart=always
 RestartSec=10
 
