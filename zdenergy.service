@@ -8,7 +8,8 @@ Type=notify
 User=your-username
 WorkingDirectory=/home/your-username/zdenergy
 Environment="PATH=/home/your-username/zdenergy/venv/bin"
-ExecStart=/home/your-username/zdenergy/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 readings:app
+Environment="THREADS=8"
+ExecStart=/home/your-username/zdenergy/venv/bin/gunicorn --workers 1 --threads ${THREADS} -b 0.0.0.0:5000 --timeout 120 readings:app
 Restart=always
 RestartSec=10
 

@@ -30,6 +30,7 @@ app = Flask(__name__)
 # Thread-safe ring buffer for structured readings
 weather_data: Deque[Dict[str, Any]] = deque(maxlen=MAX_SAMPLES)
 _data_lock = threading.Lock()
+_tcp_thread_started = False
 
 # Debug / metrics state
 bytes_received = 0
@@ -522,10 +523,28 @@ def debug_toggle():  # type: ignore
 		DEBUG = not DEBUG
 		return jsonify({"debug": DEBUG})
 
+def start_tcp_thread_once() -> None:
+	"""Start the TCP ingest server in a background thread once per process.
+
+	This ensures ingestion runs when served by Gunicorn (WSGI) as well.
+	Note: run with a single Gunicorn worker so only one process binds TCP_PORT.
+	"""
+	global _tcp_thread_started
+	if not _tcp_thread_started:
+		t = threading.Thread(target=tcp_server, daemon=True)
+		t.start()
+		_tcp_thread_started = True
+
+
+# When running under Gunicorn, the module is imported and __main__ isn't executed.
+# Use Flask hook to start the TCP server on first request in that process.
+@app.before_first_request
+def _start_background_ingest():  # type: ignore
+	start_tcp_thread_once()
+
 
 def main():
-		tcp_thread = threading.Thread(target=tcp_server, daemon=True)
-		tcp_thread.start()
+		start_tcp_thread_once()
 		print(f"Starting Flask web server on port {HTTP_PORT}...")
 		# Enable threaded to handle simultaneous API + dashboard requests
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)

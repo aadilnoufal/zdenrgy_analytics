@@ -12,6 +12,14 @@ git pull origin main
 
 # Activate virtual environment
 echo "🐍 Activating virtual environment..."
+if [ -d "venv" ]; then
+	source venv/bin/activate
+else
+	echo "⚠️  venv not found; creating..."
+	python3 -m venv venv
+	source venv/bin/activate
+fi
+echo "🐍 Activating virtual environment..."
 source venv/bin/activate
 
 # Install/update dependencies
@@ -20,6 +28,8 @@ pip install -r requirements.txt
 
 # Restart the service
 echo "🔄 Restarting zdenergy service..."
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+$SUDO systemctl daemon-reload || true
 sudo systemctl restart zdenergy
 
 # Check status
