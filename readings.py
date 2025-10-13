@@ -569,5 +569,10 @@ def main():
 		app.run(host=APP_HOST, port=HTTP_PORT, threaded=True)
 
 
+# Start TCP server thread when module is imported (for Gunicorn)
+tcp_thread = threading.Thread(target=tcp_server, daemon=True)
+tcp_thread.start()
+
+
 if __name__ == "__main__":
 		main()
