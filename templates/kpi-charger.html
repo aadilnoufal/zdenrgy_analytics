@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}DC Charger KPIs{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>🔌 DC Charger KPIs</span>
+	<a href="/kpi" class="nav-btn">← Back to KPIs</a>
+</h1>
+
+<div class="meta">
+	<div class="pill">Real-time Charger Monitoring</div>
+	<div class="pill">Refresh: 5s</div>
+</div>
+
+<div class="grid">
+	<div class="card">
+		<h2>Charging Power</h2>
+		<div class="kpi-value-large">
+			<span id="charger-power">—</span>
+			<span class="unit">kW</span>
+		</div>
+		<div class="kpi-subtitle">Current charging rate</div>
+	</div>
+
+	<div class="card">
+		<h2>Active Sessions</h2>
+		<div class="kpi-value-large">
+			<span id="charger-sessions">—</span>
+			<span class="unit"></span>
+		</div>
+		<div class="kpi-subtitle">Vehicles charging</div>
+	</div>
+
+	<div class="card">
+		<h2>Charger Efficiency</h2>
+		<div class="kpi-value-large">
+			<span id="charger-efficiency">—</span>
+			<span class="unit">%</span>
+		</div>
+		<div class="kpi-subtitle">Power conversion</div>
+	</div>
+
+	<div class="card">
+		<h2>Charger Status</h2>
+		<div class="kpi-value-large">
+			<span id="charger-status" class="status-badge">—</span>
+		</div>
+		<div class="kpi-subtitle">Operational state</div>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Daily Energy Delivered</h2>
+	<div class="kpi-value-large">
+		<span id="charger-daily-energy">—</span>
+		<span class="unit">kWh</span>
+	</div>
+	<div class="kpi-subtitle">Energy delivered today</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Charging Power - Historical</h2>
+	<div class="chart-container" style="height: 300px;">
+		<canvas id="chart-charger-power"></canvas>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Charger Metrics</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Metric</th>
+				<th>Value</th>
+				<th>Unit</th>
+				<th>Status</th>
+			</tr>
+		</thead>
+		<tbody id="charger-metrics">
+			<tr>
+				<td colspan="4" style="text-align: center; opacity: 0.5;">Loading...</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<footer>Charger data updates every 5 seconds. Configure DC charger parameters in config.py</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/kpi-charger.js') }}"></script>
+{% endblock %}

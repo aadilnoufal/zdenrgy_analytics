@@ -1,3 +1,6 @@
+# Environment variables (contains sensitive credentials)
+.env
+
 # Python
 __pycache__/
 *.py[cod]

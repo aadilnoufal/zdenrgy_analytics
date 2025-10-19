@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Solar Array KPIs{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>☀️ Solar Array KPIs</span>
+	<a href="/kpi" class="nav-btn">← Back to KPIs</a>
+</h1>
+
+<div class="meta">
+	<div class="pill">Real-time Solar Monitoring</div>
+	<div class="pill">Refresh: 5s</div>
+	<div class="pill">Irradiance: <span id="solar-irradiance-pill">—</span> W/m²</div>
+</div>
+
+<div class="grid">
+	<div class="card">
+		<h2>Solar Generation</h2>
+		<div class="kpi-value-large">
+			<span id="solar-generation">—</span>
+			<span class="unit">kW</span>
+		</div>
+		<div class="kpi-subtitle">Current power output</div>
+	</div>
+
+	<div class="card">
+		<h2>Daily Solar Energy</h2>
+		<div class="kpi-value-large">
+			<span id="solar-daily-energy">—</span>
+			<span class="unit">kWh</span>
+		</div>
+		<div class="kpi-subtitle">Energy generated today</div>
+	</div>
+
+	<div class="card">
+		<h2>Performance Ratio</h2>
+		<div class="kpi-value-large">
+			<span id="solar-performance">—</span>
+			<span class="unit">%</span>
+		</div>
+		<div class="kpi-subtitle">Actual vs theoretical</div>
+	</div>
+
+	<div class="card">
+		<h2>Cost Savings (Today)</h2>
+		<div class="kpi-value-large">
+			<span id="solar-savings">—</span>
+			<span class="unit">$</span>
+		</div>
+		<div class="kpi-subtitle">Money saved</div>
+	</div>
+</div>
+
+<div class="grid-2x2" style="margin-top: 1.5rem;">
+	<div class="card">
+		<h2>Solar Irradiance</h2>
+		<div class="chart-container">
+			<canvas id="chart-irradiance"></canvas>
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>Solar Generation</h2>
+		<div class="chart-container">
+			<canvas id="chart-generation"></canvas>
+		</div>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Solar Array Configuration</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Parameter</th>
+				<th>Value</th>
+				<th>Unit</th>
+			</tr>
+		</thead>
+		<tbody id="solar-config">
+			<tr>
+				<td colspan="3" style="text-align: center; opacity: 0.5;">Loading...</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Environmental Impact</h2>
+	<div class="grid">
+		<div class="card" style="background: #1a1d23; border: none;">
+			<h2 style="font-size: 0.9rem; opacity: 0.8;">Carbon Offset (Today)</h2>
+			<div class="kpi-value-large">
+				<span id="solar-carbon">—</span>
+				<span class="unit" style="font-size: 1.2rem;">kg CO₂</span>
+			</div>
+		</div>
+		<div class="card" style="background: #1a1d23; border: none;">
+			<h2 style="font-size: 0.9rem; opacity: 0.8;">Trees Equivalent</h2>
+			<div class="kpi-value-large">
+				<span id="solar-trees">—</span>
+				<span class="unit" style="font-size: 1.2rem;">trees</span>
+			</div>
+		</div>
+	</div>
+</div>
+
+<footer>Solar data updates every 5 seconds. Configure solar parameters in config.py</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/kpi-solar.js') }}"></script>
+{% endblock %}

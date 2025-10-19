@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}KPI Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+.kpi-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 1.5rem;
+	margin-top: 2rem;
+}
+
+.kpi-card {
+	background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100%);
+	border: 1px solid #3a4150;
+	border-radius: 16px;
+	padding: 2rem;
+	text-align: center;
+	transition: all 0.3s ease;
+	cursor: pointer;
+	text-decoration: none;
+	color: inherit;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 180px;
+}
+
+.kpi-card:hover {
+	transform: translateY(-4px);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+	border-color: #5eb3ff;
+}
+
+.kpi-card-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.kpi-card h2 {
+	margin: 0;
+	font-size: 1.3rem;
+	font-weight: 600;
+	color: #e8eef5;
+}
+
+.kpi-card p {
+	margin: 0.5rem 0 0;
+	font-size: 0.9rem;
+	opacity: 0.7;
+}
+
+.kpi-card.battery { border-top: 3px solid #4ecdc4; }
+.kpi-card.inverter { border-top: 3px solid #ffd166; }
+.kpi-card.charger { border-top: 3px solid #a78bfa; }
+.kpi-card.solar { border-top: 3px solid #ff7369; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>KPI Dashboard</span>
+	<a href="/" class="nav-btn">← Back to Dashboard</a>
+</h1>
+
+<div class="kpi-grid">
+	<a href="/kpi/battery" class="kpi-card battery">
+		<div class="kpi-card-icon">🔋</div>
+		<h2>Battery KPIs</h2>
+		<p>State of charge, capacity, power flow</p>
+	</a>
+
+	<a href="/kpi/inverter" class="kpi-card inverter">
+		<div class="kpi-card-icon">⚡</div>
+		<h2>Inverter KPIs</h2>
+		<p>Efficiency, power conversion, status</p>
+	</a>
+
+	<a href="/kpi/charger" class="kpi-card charger">
+		<div class="kpi-card-icon">🔌</div>
+		<h2>DC Charger KPIs</h2>
+		<p>Charging power, sessions, efficiency</p>
+	</a>
+
+	<a href="/kpi/solar" class="kpi-card solar">
+		<div class="kpi-card-icon">☀️</div>
+		<h2>Solar Array KPIs</h2>
+		<p>Generation, irradiance, performance</p>
+	</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/kpi.js') }}"></script>
+{% endblock %}

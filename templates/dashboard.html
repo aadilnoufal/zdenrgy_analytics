@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Live Sensor Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>Live Sensor Dashboard</span>
+	<a href="/kpi" class="nav-btn">View KPIs</a>
+</h1>
+
+<!-- Time Window Controls -->
+<div class="time-controls">
+	<div class="btn-group">
+		<button class="time-btn" data-minutes="5">5min</button>
+		<button class="time-btn" data-minutes="15">15min</button>
+		<button class="time-btn" data-minutes="30">30min</button>
+		<button class="time-btn active" data-minutes="60">1hr</button>
+		<button class="time-btn" data-minutes="120">2hr</button>
+		<button class="time-btn" data-minutes="360">6hr</button>
+		<button class="time-btn" data-minutes="720">12hr</button>
+		<button class="time-btn" data-minutes="1440">24hr</button>
+	</div>
+	
+	<!-- Date Picker -->
+	<div class="date-picker-group">
+		<label for="date-picker">📅 View Date:</label>
+		<input type="date" id="date-picker" class="date-input" />
+		<button id="load-day-btn" class="load-btn">Load Day</button>
+		<button id="today-btn" class="today-btn">Today (Live)</button>
+	</div>
+</div>
+
+<!-- Current Readings -->
+<div class="current-readings">
+	<div class="reading-card">
+		<div class="reading-label">Temperature</div>
+		<div class="reading-value" id="current-temp">—</div>
+		<div class="reading-unit">°C</div>
+	</div>
+	<div class="reading-card">
+		<div class="reading-label">Humidity</div>
+		<div class="reading-value" id="current-rh">—</div>
+		<div class="reading-unit">%</div>
+	</div>
+	<div class="reading-card">
+		<div class="reading-label">Light</div>
+		<div class="reading-value" id="current-lux">—</div>
+		<div class="reading-unit">lux</div>
+	</div>
+	<div class="reading-card">
+		<div class="reading-label">Irradiance</div>
+		<div class="reading-value" id="current-irradiance">—</div>
+		<div class="reading-unit">W/m²</div>
+	</div>
+</div>
+
+<!-- CSV Export Section -->
+<div class="export-section">
+	<h3>📊 Export Data to CSV</h3>
+	<div class="export-controls">
+		<div class="export-option">
+			<label>
+				<input type="radio" name="export-type" value="last24h" checked>
+				Last 24 Hours
+			</label>
+		</div>
+		<div class="export-option">
+			<label>
+				<input type="radio" name="export-type" value="single-date">
+				Single Date
+			</label>
+			<input type="date" id="export-single-date" class="date-input" disabled>
+		</div>
+		<div class="export-option">
+			<label>
+				<input type="radio" name="export-type" value="date-range">
+				Date Range
+			</label>
+			<div class="date-range-inputs">
+				<input type="date" id="export-start-date" class="date-input" disabled>
+				<span>to</span>
+				<input type="date" id="export-end-date" class="date-input" disabled>
+			</div>
+		</div>
+		<div class="export-option">
+			<label>
+				<input type="radio" name="export-type" value="all">
+				All Available Data
+			</label>
+		</div>
+		<button id="export-csv-btn" class="export-btn">
+			📥 Download CSV
+		</button>
+	</div>
+</div>
+
+<div class="meta">
+	<div class="pill">Mode: <span id="mode-display">Live</span></div>
+	<div class="pill">Latest Time: <span id="latest-time">—</span></div>
+	<div class="pill">Readings: <span id="reading-count">0</span></div>
+	<div class="pill">Refresh: <span id="refresh-status">5s</span></div>
+</div>
+<div class="grid-2x2">
+	<div class="card">
+		<h2>Temperature</h2>
+		<div class="chart-container">
+			<canvas id="chart-temp"></canvas>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Relative Humidity</h2>
+		<div class="chart-container">
+			<canvas id="chart-rh"></canvas>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Light (Lux)</h2>
+		<div class="chart-container">
+			<canvas id="chart-lux"></canvas>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Solar Irradiance (W/m²)</h2>
+		<div class="chart-container">
+			<canvas id="chart-irradiance"></canvas>
+		</div>
+	</div>
+</div>
+<div class="table-card">
+	<h2>Live Data (Last 50 Readings)</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Time</th>
+				<th>Temperature (°C)</th>
+				<th>Humidity (%)</th>
+				<th>Lux</th>
+				<th>Irradiance (W/m²)</th>
+			</tr>
+		</thead>
+		<tbody id="data-tbody">
+		</tbody>
+	</table>
+</div>
+<footer>Data updates automatically. Built with Flask + Chart.js. Upgrade to WebSockets later for sub-second latency.</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

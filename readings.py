@@ -3,7 +3,8 @@
 Features:
  - TCP server receives JSON lines like:
 	 {"id":"e4643048d7292c2e","time":"2025-10-02 17:58:37","temp":24.10,"rh":50.50,"lux":546.60}
- - Stores last 5,000 readings (in-memory ring buffer)
+ - Stores data in PostgreSQL database for persistence
+ - Maintains in-memory buffer for real-time display
  - Flask web UI with three live line charts (Temperature, Humidity, Lux) using Chart.js
  - Polling every 5 seconds to update charts (simple + robust). Can later be upgraded to WebSockets/SSE.
 """
@@ -15,14 +16,27 @@ import socket
 import threading
 from collections import deque
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Deque, Dict, Any, List
+import csv
+from io import StringIO
 
-from flask import Flask, jsonify, make_response, request
+from flask import Flask, jsonify, make_response, request, render_template, Response
+
+# Import KPI calculation modules
+from data_sources import create_data_provider
+from kpi_calculator import create_kpi_calculator
+
+# Import database manager
+from db_manager import get_db_manager
+
+# Qatar timezone (UTC+3)
+QATAR_TZ = ZoneInfo("Asia/Qatar")
 
 APP_HOST = "0.0.0.0"
 HTTP_PORT = 5000
 TCP_PORT = 6000
-MAX_SAMPLES = 5000
+MAX_SAMPLES = 1000  # Reduced for in-memory buffer (real-time display only)
 DEBUG = True  # Set False for quieter logs
 
 app = Flask(__name__)
@@ -167,8 +181,41 @@ def _ingest_line(line: str) -> None:
 		reading = parse_reading(line)
 		if reading:
 				global messages_parsed, last_valid_raw
+				
+				# Store in memory for real-time display
 				with _data_lock:
 						weather_data.append(reading)
+				
+				# Store in database for persistence
+				try:
+						db = get_db_manager()
+						# Parse timestamp and ensure it's in Qatar time
+						timestamp = datetime.fromisoformat(reading['time_iso'])
+						if timestamp.tzinfo is None:
+								# If naive, assume it's Qatar time
+								timestamp = timestamp.replace(tzinfo=QATAR_TZ)
+						else:
+								# Convert to Qatar time if different timezone
+								timestamp = timestamp.astimezone(QATAR_TZ)
+						
+						# Calculate irradiance if not present
+						irradiance = reading.get('irradiance')
+						if irradiance is None and reading.get('lux'):
+								irradiance = reading['lux'] / 127.0  # Convert lux to W/m²
+						
+						db.insert_sensor_reading(
+								temperature=reading.get('temp'),
+								humidity=reading.get('rh'),
+								lux=reading.get('lux'),
+								irradiance=irradiance,
+								timestamp=timestamp,
+								sensor_id=reading.get('id', 'unknown')
+						)
+						if DEBUG:
+								print(f"✅ Saved to DB (Qatar time): {timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+				except Exception as e:
+						print(f"⚠️  Failed to store reading in database: {e}")
+				
 				messages_parsed += 1
 				last_valid_raw = line[:500]
 				print(
@@ -218,355 +265,388 @@ def ensure_tcp_started() -> None:
 
 @app.route("/api/data")
 def api_data():
-	"""Return recent readings as JSON list.
+	"""Return sensor readings as JSON.
 
 	Query params:
-		limit: max number of most recent samples (default 300)
-		minutes: optionally restrict to readings within last N minutes
+		window: Time window in minutes (e.g., 60, 120, 1440)
+		date: Specific date in YYYY-MM-DD format (returns full day)
+		limit: Max number of readings (default 1000)
+	"""
+	ensure_tcp_started()
+	
+	# Check for date parameter first
+	date_param = request.args.get('date')
+	if date_param:
+		# Return full day from database
+		try:
+			db = get_db_manager()
+			readings = db.get_readings_by_date(date_param)
+			return jsonify({
+				'readings': readings,
+				'count': len(readings),
+				'source': 'database',
+				'date': date_param
+			})
+		except Exception as e:
+			return jsonify({'error': str(e)}), 500
+	
+	# Check for time window parameter
+	window_minutes = request.args.get('window', type=int)
+	limit = request.args.get('limit', default=1000, type=int)
+	limit = max(1, min(limit, 10000))
+	
+	if window_minutes:
+		# Query from database for specific time window
+		try:
+			db = get_db_manager()
+			readings = db.get_readings_by_window(window_minutes)
+			
+			# Format readings
+			formatted = []
+			for r in readings:
+				formatted.append({
+					'time': r.get('timestamp').isoformat() if isinstance(r.get('timestamp'), datetime) else r.get('timestamp'),
+					'temp': float(r.get('temperature')) if r.get('temperature') else None,
+					'rh': float(r.get('humidity')) if r.get('humidity') else None,
+					'lux': float(r.get('lux')) if r.get('lux') else None,
+					'irradiance': float(r.get('irradiance')) if r.get('irradiance') else None,
+				})
+			
+			# Apply limit
+			if len(formatted) > limit:
+				formatted = formatted[-limit:]
+			
+			return jsonify({
+				'readings': formatted,
+				'count': len(formatted),
+				'source': 'database',
+				'window_minutes': window_minutes
+			})
+		except Exception as e:
+			print(f"⚠️ Database query failed: {e}")
+			# Fall back to memory
+			with _data_lock:
+				data = list(weather_data)[-limit:]
+			formatted = [{
+				'time': r.get('time_iso', r.get('time')),
+				'temp': r.get('temp'),
+				'rh': r.get('rh'),
+				'lux': r.get('lux'),
+				'irradiance': r.get('irradiance', r.get('lux', 0) / 127.0 if r.get('lux') else 0)
+			} for r in data]
+			return jsonify({
+				'readings': formatted,
+				'count': len(formatted),
+				'source': 'memory'
+			})
+	
+	# Default: return in-memory buffer
+	with _data_lock:
+		data = list(weather_data)[-limit:]
+	
+	formatted = [{
+		'time': r.get('time_iso', r.get('time')),
+		'temp': r.get('temp'),
+		'rh': r.get('rh'),
+		'lux': r.get('lux'),
+		'irradiance': r.get('irradiance', r.get('lux', 0) / 127.0 if r.get('lux') else 0)
+	} for r in data]
+	
+	return jsonify({
+		'readings': formatted,
+		'count': len(formatted),
+		'source': 'memory'
+	})
+
+
+@app.route("/api/dates")
+def api_dates():
+	"""Return available date range with data.
+	
+	Returns:
+		{
+			'date_range': {'min_date': 'YYYY-MM-DD', 'max_date': 'YYYY-MM-DD'},
+			'total_readings': N
+		}
 	"""
 	try:
-		limit = int(request.args.get("limit", 300))
-	except ValueError:
-		limit = 300
-	limit = max(1, min(limit, MAX_SAMPLES))
-	minutes_param = request.args.get("minutes")
-	cutoff_ts = None
-	if minutes_param:
-		try:
-			minutes_val = float(minutes_param)
-			if minutes_val > 0:
-				cutoff_ts = datetime.utcnow().timestamp() - minutes_val * 60.0
-		except ValueError:
-			pass
-	with _data_lock:
-		data_list: List[Dict[str, Any]] = list(weather_data)
-	if cutoff_ts is not None:
-		filtered = []
-		for r in reversed(data_list):  # iterate from newest backwards until cutoff
-			try:
-				ts = datetime.fromisoformat(r["time_iso"].split("+")[0]).timestamp()
-			except Exception:
-				continue
-			if ts >= cutoff_ts:
-				filtered.append(r)
+		db = get_db_manager()
+		date_range = db.get_date_range()
+		stats = db.get_statistics()
+		
+		return jsonify({
+			'date_range': date_range,
+			'total_readings': stats.get('total_readings', 0)
+		})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/export/csv")
+def export_csv():
+	"""Export sensor data to CSV format.
+	
+	Query params:
+		start_date: Start date (YYYY-MM-DD) - optional
+		end_date: End date (YYYY-MM-DD) - optional
+		all: Set to 'true' to export all data - optional
+		
+	If no params provided, exports last 24 hours
+	"""
+	try:
+		db = get_db_manager()
+		export_all = request.args.get('all', '').lower() == 'true'
+		start_date = request.args.get('start_date')
+		end_date = request.args.get('end_date')
+		
+		# Determine what data to export
+		if export_all:
+			# Export all data
+			conn = db.get_connection()
+			cursor = conn.cursor()
+			cursor.execute("""
+				SELECT timestamp, temperature, humidity, lux, irradiance
+				FROM sensor_readings
+				ORDER BY timestamp ASC;
+			""")
+			rows = cursor.fetchall()
+			cursor.close()
+			db.return_connection(conn)
+			filename = "sensor_data_all.csv"
+			
+		elif start_date and end_date:
+			# Export date range
+			start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=QATAR_TZ)
+			end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=QATAR_TZ)
+			
+			readings = db.get_readings_by_time_range(start_dt, end_dt)
+			rows = [(r['timestamp'], r.get('temperature'), r.get('humidity'), 
+					 r.get('lux'), r.get('irradiance')) for r in readings]
+			filename = f"sensor_data_{start_date}_to_{end_date}.csv"
+			
+		elif start_date:
+			# Export single date
+			readings = db.get_readings_by_date(start_date)
+			rows = [(datetime.fromisoformat(r['time']), r.get('temp'), r.get('rh'),
+					 r.get('lux'), r.get('irradiance')) for r in readings]
+			filename = f"sensor_data_{start_date}.csv"
+			
+		else:
+			# Default: last 24 hours
+			readings = db.get_readings_by_window(1440)  # 24 hours
+			rows = [(r['timestamp'], r.get('temperature'), r.get('humidity'),
+					 r.get('lux'), r.get('irradiance')) for r in readings]
+			filename = "sensor_data_last_24h.csv"
+		
+		# Create CSV in memory
+		output = StringIO()
+		writer = csv.writer(output)
+		
+		# Write header
+		writer.writerow(['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Lux', 'Irradiance (W/m²)'])
+		
+		# Write data rows
+		for row in rows:
+			timestamp, temp, humidity, lux, irradiance = row
+			# Format timestamp
+			if isinstance(timestamp, datetime):
+				ts_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
 			else:
-				break
-		subset = list(reversed(filtered))[-limit:]
-	else:
-		subset = data_list[-limit:]
-	payload = [
-		{
-			"time": r["time_iso"],
-			"temp": r["temp"],
-			"rh": r["rh"],
-			"lux": r["lux"],
-			"irradiance": r["lux"] / 127.0,  # Convert lux to W/m² (127 lux = 1 W/m²)
-		}
-		for r in subset
-	]
-	return make_response(jsonify(payload), 200)
+				ts_str = str(timestamp)
+			
+			writer.writerow([
+				ts_str,
+				f"{temp:.2f}" if temp is not None else '',
+				f"{humidity:.2f}" if humidity is not None else '',
+				f"{lux:.2f}" if lux is not None else '',
+				f"{irradiance:.3f}" if irradiance is not None else ''
+			])
+		
+		# Create response
+		output.seek(0)
+		response = Response(output.getvalue(), mimetype='text/csv')
+		response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+		
+		return response
+		
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
 
 
 @app.route("/")
 def dashboard():  # type: ignore
 		"""Main dashboard page with three charts."""
-		return (
-				"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8" />
-	<title>Sensor Dashboard</title>
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<style>
-		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
-		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
-		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
-		.nav-btn:hover { background:#3a4150; }
-		.grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
-		.grid-2x2 { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:1.2rem; }
-		.card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem 1.1rem 1.6rem; box-shadow:0 4px 16px -6px #000a; }
-		.card h2 { margin:0 0 .6rem; font-size:1.05rem; font-weight:500; }
-		.chart-container { position:relative; height:280px; width:100%; }
-		footer { margin-top:2rem; font-size:.75rem; opacity:.55; }
-		.meta { display:flex; gap:1.5rem; flex-wrap:wrap; margin:.2rem 0 1rem; font-size:.85rem; }
-		.pill { background:#2d3341; padding:.25rem .55rem; border-radius:20px; }
-		a { color:#5eb3ff; text-decoration:none; }
-		table { width:100%; border-collapse:collapse; margin-top:1.5rem; font-size:.85rem; }
-		th, td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #2a2f3a; }
-		th { background:#1c1f26; font-weight:600; position:sticky; top:0; }
-		.table-card { background:#1c1f26; border:1px solid #2a2f3a; border-radius:12px; padding:1rem; margin-top:1.5rem; max-height:400px; overflow-y:auto; }
-		.table-card h2 { margin:0 0 .8rem; }
-	</style>
-	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-	<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-	<script>
-		let charts = {};
-		let currentWindow = 60; // minutes
-		const GAP_MS = 2 * 60 * 1000; // break line if gap > 2 minutes
-
-		async function fetchData() {
-			const resp = await fetch(`/api/data?limit=1000&minutes=${currentWindow}`);
-			const data = await resp.json();
-			// Calculate irradiance if not present (for backward compatibility)
-			data.forEach(r => {
-				if (!r.irradiance) {
-					r.irradiance = r.lux / 127.0;
-				}
-			});
-			return data;
-		}
-
-		function buildSeries(raw, field) {
-			const series = [];
-			let prevTime = null;
-			for (const r of raw) {
-				const t = new Date(r.time).getTime();
-				if (prevTime !== null && (t - prevTime) > GAP_MS) {
-					// Insert a null point to create a visible break
-					series.push({x: new Date(prevTime + 1), y: null});
-				}
-				series.push({x: new Date(t), y: r[field]});
-				prevTime = t;
-			}
-			return series;
-		}
-
-		function makeChart(ctx, label, color, yTitle) {
-			return new Chart(ctx, {
-				type: 'line',
-				data: { datasets: [{
-					label,
-					data: [],
-					fill:false,
-					tension:.25,
-					borderColor: color,
-					pointRadius:0,
-					borderWidth:2,
-					spanGaps:false,
-					normalized:true
-				}]},
-				options: {
-					responsive:true,
-					maintainAspectRatio:false,
-					animation:false,
-					interaction:{ mode:'nearest', intersect:false },
-					scales:{
-						x:{ type:'time', time:{ tooltipFormat:'yyyy-MM-dd HH:mm:ss' }, ticks:{ color:'#9aa4b1', maxRotation:0 }, grid:{ color:'#2a3039' } },
-						y:{ 
-							ticks:{ color:'#9aa4b1' }, 
-							grid:{ color:'#2a3039' }, 
-							title:{ display:true, text:yTitle, color:'#9aa4b1' },
-							suggestedMin: undefined,
-							suggestedMax: undefined
-						}
-					},
-					plugins:{ legend:{ labels:{ color:'#d0d7e1' } }, tooltip:{ mode:'index', intersect:false } }
-				}
-			});
-		}
-
-		async function refresh() {
-			try {
-				const raw = await fetchData();
-				if (!charts.temp) {
-					charts.temp = makeChart(document.getElementById('chart-temp'), 'Temp', '#ff7369', '°C');
-					charts.rh = makeChart(document.getElementById('chart-rh'), 'RH', '#4ecdc4', '%');
-					charts.lux = makeChart(document.getElementById('chart-lux'), 'Lux', '#ffd166', 'lux');
-					charts.irradiance = makeChart(document.getElementById('chart-irradiance'), 'Irradiance', '#a78bfa', 'W/m²');
-				}
-				const tempData = buildSeries(raw, 'temp');
-				const rhData = buildSeries(raw, 'rh');
-				const luxData = buildSeries(raw, 'lux');
-				const irradianceData = buildSeries(raw, 'irradiance');
-				
-				// Update chart data
-				charts.temp.data.datasets[0].data = tempData;
-				charts.rh.data.datasets[0].data = rhData;
-				charts.lux.data.datasets[0].data = luxData;
-				charts.irradiance.data.datasets[0].data = irradianceData;
-				
-				// Auto-scale Y axis with padding
-				updateYScale(charts.temp, tempData);
-				updateYScale(charts.rh, rhData);
-				updateYScale(charts.lux, luxData);
-				updateYScale(charts.irradiance, irradianceData);
-				
-				charts.temp.update();
-				charts.rh.update();
-				charts.lux.update();
-				charts.irradiance.update();
-				updateMeta(raw);
-				updateTable(raw);
-			} catch (e) { console.error(e); }
-		}
-
-		function updateYScale(chart, data) {
-			const values = data.filter(p => p.y !== null).map(p => p.y);
-			if (values.length === 0) return;
-			const min = Math.min(...values);
-			const max = Math.max(...values);
-			const range = max - min;
-			const padding = Math.max(range * 0.1, 1); // 10% padding or at least 1 unit
-			// Round to whole numbers for cleaner scaling
-			chart.options.scales.y.suggestedMin = Math.floor(min - padding);
-			chart.options.scales.y.suggestedMax = Math.ceil(max + padding);
-			// Set step size to 1 for cleaner grid lines
-			chart.options.scales.y.ticks.stepSize = 1;
-		}
-
-		function updateMeta(raw) {
-			if (!raw.length) return;
-			const latest = raw[raw.length - 1];
-			document.getElementById('latest-temp').textContent = latest.temp.toFixed(2) + ' °C';
-			document.getElementById('latest-rh').textContent = latest.rh.toFixed(2) + ' %';
-			document.getElementById('latest-lux').textContent = latest.lux.toFixed(2) + ' lx';
-			document.getElementById('latest-irradiance').textContent = latest.irradiance.toFixed(3) + ' W/m²';
-			document.getElementById('latest-time').textContent = new Date(latest.time).toLocaleString();
-		}
-
-		function updateTable(raw) {
-			const tbody = document.getElementById('data-tbody');
-			tbody.innerHTML = '';
-			// Show last 50 readings (most recent first)
-			const subset = raw.slice(-50).reverse();
-			for (const r of subset) {
-				const tr = document.createElement('tr');
-				tr.innerHTML = `
-					<td>${new Date(r.time).toLocaleString()}</td>
-					<td>${r.temp.toFixed(2)}</td>
-					<td>${r.rh.toFixed(2)}</td>
-					<td>${r.lux.toFixed(2)}</td>
-					<td>${r.irradiance.toFixed(3)}</td>
-				`;
-				tbody.appendChild(tr);
-			}
-		}
-
-		function handleWindowChange(e){
-			currentWindow = parseInt(e.target.value, 10);
-			refresh();
-		}
-
-		setInterval(refresh, 5000);
-		window.addEventListener('DOMContentLoaded', () => {
-			document.getElementById('window-select').addEventListener('change', handleWindowChange);
-			refresh();
-		});
-	</script>
-</head>
-<body>
-	<h1>
-		<span>Live Sensor Dashboard</span>
-		<a href="/kpi" class="nav-btn">View KPIs</a>
-	</h1>
-	<div class="meta">
-		<div class="pill">Latest Time: <span id="latest-time">—</span></div>
-		<div class="pill">Temp: <span id="latest-temp">—</span></div>
-		<div class="pill">Humidity: <span id="latest-rh">—</span></div>
-		<div class="pill">Lux: <span id="latest-lux">—</span></div>
-		<div class="pill">Irradiance: <span id="latest-irradiance">—</span></div>
-		<div class="pill">Refresh: 5s</div>
-		<div class="pill">Window: 
-			<select id="window-select" style="background:#1c1f26;color:#eee;border:1px solid #2a2f3a;border-radius:6px;padding:2px 6px;">
-				<option value="15">15m</option>
-				<option value="30">30m</option>
-				<option value="60" selected>1h</option>
-				<option value="180">3h</option>
-				<option value="720">12h</option>
-				<option value="1440">24h</option>
-			</select>
-		</div>
-	</div>
-	<div class="grid-2x2">
-		<div class="card">
-			<h2>Temperature</h2>
-			<div class="chart-container">
-				<canvas id="chart-temp"></canvas>
-			</div>
-		</div>
-		<div class="card">
-			<h2>Relative Humidity</h2>
-			<div class="chart-container">
-				<canvas id="chart-rh"></canvas>
-			</div>
-		</div>
-		<div class="card">
-			<h2>Light (Lux)</h2>
-			<div class="chart-container">
-				<canvas id="chart-lux"></canvas>
-			</div>
-		</div>
-		<div class="card">
-			<h2>Solar Irradiance (W/m²)</h2>
-			<div class="chart-container">
-				<canvas id="chart-irradiance"></canvas>
-			</div>
-		</div>
-	</div>
-	<div class="table-card">
-		<h2>Live Data (Last 50 Readings)</h2>
-		<table>
-			<thead>
-				<tr>
-					<th>Time</th>
-					<th>Temperature (°C)</th>
-					<th>Humidity (%)</th>
-					<th>Lux</th>
-					<th>Irradiance (W/m²)</th>
-				</tr>
-			</thead>
-			<tbody id="data-tbody">
-			</tbody>
-		</table>
-	</div>
-	<footer>Data updates automatically. Built with Flask + Chart.js. Upgrade to WebSockets later for sub-second latency.</footer>
-</body>
-</html>
-				"""
-		)
+		return render_template("dashboard.html")
 
 
 @app.route("/kpi")
 def kpi_page():  # type: ignore
 		"""KPI page."""
-		return (
-				"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8" />
-	<title>KPI Dashboard</title>
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<style>
-		:root { font-family: system-ui, Arial, sans-serif; background:#0f1115; color:#eee; }
-		body { margin: 0; padding: 1.2rem; max-width:1400px; margin:auto; }
-		h1 { font-weight:600; letter-spacing:.5px; margin-top:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
-		.nav-btn { background:#2d3341; color:#eee; border:1px solid #3a4150; padding:.5rem 1rem; border-radius:8px; cursor:pointer; text-decoration:none; display:inline-block; font-size:.9rem; transition:background .2s; }
-		.nav-btn:hover { background:#3a4150; }
-	</style>
-</head>
-<body>
-	<h1>
-		<span>KPI</span>
-		<a href="/" class="nav-btn">← Back to Dashboard</a>
-	</h1>
-</body>
-</html>
-				"""
-		)
+		return render_template("kpi.html")
+
+
+@app.route("/kpi/battery")
+def kpi_battery():  # type: ignore
+		"""Battery KPI page."""
+		return render_template("kpi-battery.html")
+
+
+@app.route("/kpi/inverter")
+def kpi_inverter():  # type: ignore
+		"""Inverter KPI page."""
+		return render_template("kpi-inverter.html")
+
+
+@app.route("/kpi/charger")
+def kpi_charger():  # type: ignore
+		"""DC Charger KPI page."""
+		return render_template("kpi-charger.html")
+
+
+@app.route("/kpi/solar")
+def kpi_solar():  # type: ignore
+		"""Solar Array KPI page."""
+		return render_template("kpi-solar.html")
+
+
+@app.route("/api/kpi")
+def api_kpi():  # type: ignore
+		"""Return calculated KPIs as JSON.
+		
+		This endpoint uses the DataProvider and KPICalculator to compute
+		all available KPIs from configured data sources.
+		"""
+		try:
+				# Create data provider with access to sensor data
+				data_provider = create_data_provider(weather_data)
+				
+				# Create KPI calculator
+				calculator = create_kpi_calculator(data_provider)
+				
+				# Calculate all KPIs
+				summary = calculator.calculate_summary()
+				
+				return make_response(jsonify(summary), 200)
+		except Exception as e:
+				return make_response(
+						jsonify({"error": str(e), "kpis": {}}),
+						500
+				)
+
+
+@app.route("/api/kpi/<kpi_name>")
+def api_kpi_single(kpi_name: str):  # type: ignore
+		"""Return a single calculated KPI by name.
+		
+		Available KPIs:
+		- solar_generation
+		- daily_solar_energy
+		- building_load
+		- self_consumption_ratio
+		- battery_soc
+		- daily_cost_savings
+		- grid_export_revenue
+		- daily_carbon_offset
+		- temperature
+		- humidity
+		"""
+		try:
+				data_provider = create_data_provider(weather_data)
+				calculator = create_kpi_calculator(data_provider)
+				
+				# Map KPI names to calculator methods
+				kpi_methods = {
+						"solar_generation": calculator.calculate_solar_generation,
+						"daily_solar_energy": calculator.calculate_daily_solar_energy,
+						"building_load": calculator.calculate_building_load,
+						"self_consumption_ratio": calculator.calculate_self_consumption_ratio,
+						"battery_soc": calculator.calculate_battery_status,
+						"daily_cost_savings": calculator.calculate_energy_cost_savings,
+						"grid_export_revenue": calculator.calculate_grid_export_revenue,
+						"daily_carbon_offset": calculator.calculate_carbon_offset,
+						"temperature": calculator.calculate_temperature_status,
+						"humidity": calculator.calculate_humidity_status,
+				}
+				
+				if kpi_name not in kpi_methods:
+						return make_response(
+								jsonify({"error": f"Unknown KPI: {kpi_name}"}),
+								404
+						)
+				
+				result = kpi_methods[kpi_name]()
+				
+				return make_response(jsonify({
+						"name": result.name,
+						"display_name": result.display_name,
+						"value": result.value,
+						"unit": result.unit,
+						"timestamp": result.timestamp,
+						"metadata": result.metadata,
+				}), 200)
+		except Exception as e:
+				return make_response(
+						jsonify({"error": str(e)}),
+						500
+				)
+
+
+@app.route("/api/parameters")
+def api_parameters():  # type: ignore
+		"""Return all configured parameters and their current values."""
+		try:
+				from config import ALL_PARAMETERS
+				
+				data_provider = create_data_provider(weather_data)
+				
+				parameters = {}
+				for name, param in ALL_PARAMETERS.items():
+						try:
+								value = data_provider.get(name)
+								parameters[name] = {
+										"display_name": param.display_name,
+										"value": value,
+										"unit": param.unit,
+										"source": param.source.value,
+										"description": param.description,
+								}
+						except Exception:
+								parameters[name] = {
+										"display_name": param.display_name,
+										"value": param.default_value,
+										"unit": param.unit,
+										"source": param.source.value,
+										"description": param.description,
+										"error": "Unable to fetch"
+								}
+				
+				return make_response(jsonify({"parameters": parameters}), 200)
+		except Exception as e:
+				return make_response(
+						jsonify({"error": str(e)}),
+						500
+				)
 
 
 @app.route("/api/status")
 def status():  # type: ignore
+		"""Return system status including database statistics."""
 		with _data_lock:
 				count = len(weather_data)
 				latest = weather_data[-1] if count else None
+		
+		# Get database statistics
+		try:
+				db = get_db_manager()
+				db_stats = db.get_statistics()
+		except Exception as e:
+				db_stats = {"error": str(e)}
+		
 		return jsonify(
 				{
-						"samples": count,
+						"samples_in_memory": count,
 						"latest": latest,
+						"database_stats": db_stats,
 						"tcp_port": TCP_PORT,
 						"http_port": HTTP_PORT,
 						"bytes_received": bytes_received,

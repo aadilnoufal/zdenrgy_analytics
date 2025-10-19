@@ -1,3 +1,5 @@
 flask>=3.0.0,<4
 gunicorn>=21.0.0  # For Linux/Mac production
 waitress>=2.1.0   # For Windows production (or cross-platform)
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+python-dotenv==1.0.0  # Environment variable management

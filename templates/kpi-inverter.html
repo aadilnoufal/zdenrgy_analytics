@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Inverter KPIs{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>⚡ Inverter KPIs</span>
+	<a href="/kpi" class="nav-btn">← Back to KPIs</a>
+</h1>
+
+<div class="meta">
+	<div class="pill">Real-time Inverter Monitoring</div>
+	<div class="pill">Refresh: 5s</div>
+</div>
+
+<div class="grid">
+	<div class="card">
+		<h2>DC Input Power</h2>
+		<div class="kpi-value-large">
+			<span id="inverter-dc-power">—</span>
+			<span class="unit">kW</span>
+		</div>
+		<div class="kpi-subtitle">Input from solar/battery</div>
+	</div>
+
+	<div class="card">
+		<h2>AC Output Power</h2>
+		<div class="kpi-value-large">
+			<span id="inverter-ac-power">—</span>
+			<span class="unit">kW</span>
+		</div>
+		<div class="kpi-subtitle">Output to grid/load</div>
+	</div>
+
+	<div class="card">
+		<h2>Conversion Efficiency</h2>
+		<div class="kpi-value-large">
+			<span id="inverter-efficiency">—</span>
+			<span class="unit">%</span>
+		</div>
+		<div class="kpi-subtitle">DC to AC conversion</div>
+	</div>
+
+	<div class="card">
+		<h2>Inverter Status</h2>
+		<div class="kpi-value-large">
+			<span id="inverter-status" class="status-badge">—</span>
+		</div>
+		<div class="kpi-subtitle">Operational state</div>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Inverter Efficiency - Historical</h2>
+	<div class="chart-container" style="height: 300px;">
+		<canvas id="chart-inverter-efficiency"></canvas>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Inverter Metrics</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Metric</th>
+				<th>Value</th>
+				<th>Unit</th>
+				<th>Status</th>
+			</tr>
+		</thead>
+		<tbody id="inverter-metrics">
+			<tr>
+				<td colspan="4" style="text-align: center; opacity: 0.5;">Loading...</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<footer>Inverter data updates every 5 seconds. Configure inverter parameters in config.py</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/kpi-inverter.js') }}"></script>
+{% endblock %}

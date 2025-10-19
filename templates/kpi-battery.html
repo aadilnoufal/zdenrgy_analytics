@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Battery KPIs{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+{% endblock %}
+
+{% block content %}
+<h1>
+	<span>🔋 Battery KPIs</span>
+	<a href="/kpi" class="nav-btn">← Back to KPIs</a>
+</h1>
+
+<div class="meta">
+	<div class="pill">Real-time Battery Monitoring</div>
+	<div class="pill">Refresh: 5s</div>
+</div>
+
+<div class="grid">
+	<div class="card">
+		<h2>State of Charge</h2>
+		<div class="kpi-value-large">
+			<span id="battery-soc">—</span>
+			<span class="unit">%</span>
+		</div>
+		<div class="kpi-subtitle">Current charge level</div>
+	</div>
+
+	<div class="card">
+		<h2>Available Energy</h2>
+		<div class="kpi-value-large">
+			<span id="battery-energy">—</span>
+			<span class="unit">kWh</span>
+		</div>
+		<div class="kpi-subtitle">Energy available</div>
+	</div>
+
+	<div class="card">
+		<h2>Battery Capacity</h2>
+		<div class="kpi-value-large">
+			<span id="battery-capacity">—</span>
+			<span class="unit">kWh</span>
+		</div>
+		<div class="kpi-subtitle">Total capacity</div>
+	</div>
+
+	<div class="card">
+		<h2>Battery Status</h2>
+		<div class="kpi-value-large">
+			<span id="battery-status" class="status-badge">—</span>
+		</div>
+		<div class="kpi-subtitle">Operational state</div>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Battery State of Charge - Historical</h2>
+	<div class="chart-container" style="height: 300px;">
+		<canvas id="chart-battery-soc"></canvas>
+	</div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+	<h2>Battery Metrics</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>Metric</th>
+				<th>Value</th>
+				<th>Unit</th>
+				<th>Status</th>
+			</tr>
+		</thead>
+		<tbody id="battery-metrics">
+			<tr>
+				<td colspan="4" style="text-align: center; opacity: 0.5;">Loading...</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<footer>Battery data updates every 5 seconds. Configure battery parameters in config.py</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/kpi-battery.js') }}"></script>
+{% endblock %}
