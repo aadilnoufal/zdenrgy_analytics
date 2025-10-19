@@ -158,8 +158,8 @@ Sensor → TCP → ┌─ deque (last 1000) → Fast real-time display
 
 ```env
 DB_USERNAME=doadmin
-DB_PASSWORD=***REDACTED***
-DB_HOST=zd-energy-db-do-user-22778792-0.f.db.ondigitalocean.com
+DB_PASSWORD=
+DB_HOST=
 DB_PORT=25060
 DB_NAME=defaultdb
 DB_SSLMODE=require
