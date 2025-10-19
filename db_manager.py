@@ -8,7 +8,6 @@ import psycopg2
 from psycopg2 import pool, sql
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from typing import List, Dict, Optional, Tuple
 import logging
 from dotenv import load_dotenv
@@ -19,9 +18,6 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Qatar timezone (UTC+3)
-QATAR_TZ = ZoneInfo("Asia/Qatar")
 
 
 class DatabaseManager:
@@ -159,15 +155,10 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Use Qatar time if timestamp not provided
+            # Use current time if timestamp not provided
             if timestamp is None:
-                timestamp = datetime.now(QATAR_TZ)
-            elif timestamp.tzinfo is None:
-                # If naive timestamp, assume it's Qatar time
-                timestamp = timestamp.replace(tzinfo=QATAR_TZ)
-            else:
-                # Convert to Qatar time if different timezone
-                timestamp = timestamp.astimezone(QATAR_TZ)
+                timestamp = datetime.utcnow()
+            # Just use timestamp as-is (no timezone conversion)
             
             # Try inserting with sensor_id, fall back to without if column doesn't exist
             try:
@@ -240,17 +231,7 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Ensure times are in Qatar timezone
-            if start_time.tzinfo is None:
-                start_time = start_time.replace(tzinfo=QATAR_TZ)
-            else:
-                start_time = start_time.astimezone(QATAR_TZ)
-                
-            if end_time.tzinfo is None:
-                end_time = end_time.replace(tzinfo=QATAR_TZ)
-            else:
-                end_time = end_time.astimezone(QATAR_TZ)
-            
+            # Use times as-is (no timezone conversion)
             cursor.execute("""
                 SELECT timestamp, temperature, humidity, lux, irradiance
                 FROM sensor_readings
@@ -270,13 +251,13 @@ class DatabaseManager:
                 self.return_connection(conn)
     
     def get_readings_by_window(self, window_minutes: int = 60) -> List[Dict]:
-        """Get sensor readings for the last N minutes (Qatar time)"""
-        end_time = datetime.now(QATAR_TZ)
+        """Get sensor readings for the last N minutes"""
+        end_time = datetime.utcnow()
         start_time = end_time - timedelta(minutes=window_minutes)
         return self.get_readings_by_time_range(start_time, end_time)
     
     def get_readings_by_date(self, date_str: str) -> List[Dict]:
-        """Get all readings for a specific date (YYYY-MM-DD) in Qatar time.
+        """Get all readings for a specific date (YYYY-MM-DD).
         
         Args:
             date_str: Date in format 'YYYY-MM-DD'
@@ -289,10 +270,10 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Parse date and create start/end timestamps for the day in Qatar time
+            # Parse date and create start/end timestamps for the day
             date = datetime.strptime(date_str, '%Y-%m-%d')
-            start_time = date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=QATAR_TZ)
-            end_time = date.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=QATAR_TZ)
+            start_time = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = date.replace(hour=23, minute=59, second=59, microsecond=999999)
             
             cursor.execute("""
                 SELECT 
@@ -312,12 +293,8 @@ class DatabaseManager:
             # Convert to list of dicts with proper formatting
             readings = []
             for row in results:
-                # Convert timestamp to Qatar time for display
+                # Use timestamp as-is
                 ts = row['timestamp']
-                if ts and ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=QATAR_TZ)
-                elif ts:
-                    ts = ts.astimezone(QATAR_TZ)
                     
                 readings.append({
                     'id': row['id'],
@@ -328,7 +305,7 @@ class DatabaseManager:
                     'irradiance': float(row['irradiance']) if row['irradiance'] else None,
                 })
             
-            logger.info(f"📊 Retrieved {len(readings)} readings for {date_str} (Qatar time)")
+            logger.info(f"📊 Retrieved {len(readings)} readings for {date_str}")
             return readings
             
         except Exception as e:

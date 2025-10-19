@@ -16,7 +16,6 @@ import socket
 import threading
 from collections import deque
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from typing import Deque, Dict, Any, List
 import csv
 from io import StringIO
@@ -29,9 +28,6 @@ from kpi_calculator import create_kpi_calculator
 
 # Import database manager
 from db_manager import get_db_manager
-
-# Qatar timezone (UTC+3)
-QATAR_TZ = ZoneInfo("Asia/Qatar")
 
 APP_HOST = "0.0.0.0"
 HTTP_PORT = 5000
@@ -189,14 +185,11 @@ def _ingest_line(line: str) -> None:
 				# Store in database for persistence
 				try:
 						db = get_db_manager()
-						# Parse timestamp and ensure it's in Qatar time
+						# Parse timestamp - keep as-is from sensor (assumed UTC or local time)
 						timestamp = datetime.fromisoformat(reading['time_iso'])
 						if timestamp.tzinfo is None:
-								# If naive, assume it's Qatar time
-								timestamp = timestamp.replace(tzinfo=QATAR_TZ)
-						else:
-								# Convert to Qatar time if different timezone
-								timestamp = timestamp.astimezone(QATAR_TZ)
+								# If naive, assume UTC
+								timestamp = timestamp.replace(tzinfo=None)
 						
 						# Calculate irradiance if not present
 						irradiance = reading.get('irradiance')
@@ -212,7 +205,7 @@ def _ingest_line(line: str) -> None:
 								sensor_id=reading.get('id', 'unknown')
 						)
 						if DEBUG:
-								print(f"✅ Saved to DB (Qatar time): {timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+								print(f"✅ Saved to DB: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
 				except Exception as e:
 						print(f"⚠️  Failed to store reading in database: {e}")
 				
@@ -416,8 +409,8 @@ def export_csv():
 			
 		elif start_date and end_date:
 			# Export date range
-			start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=QATAR_TZ)
-			end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=QATAR_TZ)
+			start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+			end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
 			
 			readings = db.get_readings_by_time_range(start_dt, end_dt)
 			rows = [(r['timestamp'], r.get('temperature'), r.get('humidity'), 
