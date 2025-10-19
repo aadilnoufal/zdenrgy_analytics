@@ -150,10 +150,10 @@ function updateMeta(raw) {
 	}
 	
 	const latest = raw[raw.length - 1];
-	document.getElementById('current-temp').textContent = latest.temp.toFixed(2);
-	document.getElementById('current-rh').textContent = latest.rh.toFixed(2);
-	document.getElementById('current-lux').textContent = latest.lux.toFixed(2);
-	document.getElementById('current-irradiance').textContent = latest.irradiance.toFixed(3);
+	document.getElementById('current-temp').textContent = (latest.temp !== null && latest.temp !== undefined) ? latest.temp.toFixed(2) : '0.00';
+	document.getElementById('current-rh').textContent = (latest.rh !== null && latest.rh !== undefined) ? latest.rh.toFixed(2) : '0.00';
+	document.getElementById('current-lux').textContent = (latest.lux !== null && latest.lux !== undefined) ? latest.lux.toFixed(2) : '0.00';
+	document.getElementById('current-irradiance').textContent = (latest.irradiance !== null && latest.irradiance !== undefined) ? latest.irradiance.toFixed(3) : '0.000';
 	document.getElementById('latest-time').textContent = new Date(latest.time).toLocaleString();
 	
 	// Update mode display
@@ -175,12 +175,16 @@ function updateTable(raw) {
 	const subset = raw.slice(-50).reverse();
 	for (const r of subset) {
 		const tr = document.createElement('tr');
+		const temp = (r.temp !== null && r.temp !== undefined) ? r.temp.toFixed(2) : '0.00';
+		const rh = (r.rh !== null && r.rh !== undefined) ? r.rh.toFixed(2) : '0.00';
+		const lux = (r.lux !== null && r.lux !== undefined) ? r.lux.toFixed(2) : '0.00';
+		const irradiance = (r.irradiance !== null && r.irradiance !== undefined) ? r.irradiance.toFixed(3) : '0.000';
 		tr.innerHTML = `
 			<td>${new Date(r.time).toLocaleString()}</td>
-			<td>${r.temp.toFixed(2)}</td>
-			<td>${r.rh.toFixed(2)}</td>
-			<td>${r.lux.toFixed(2)}</td>
-			<td>${r.irradiance.toFixed(3)}</td>
+			<td>${temp}</td>
+			<td>${rh}</td>
+			<td>${lux}</td>
+			<td>${irradiance}</td>
 		`;
 		tbody.appendChild(tr);
 	}
