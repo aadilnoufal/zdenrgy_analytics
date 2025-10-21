@@ -15,7 +15,7 @@ import json
 import socket
 import threading
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Deque, Dict, Any, List
 import csv
 from io import StringIO
@@ -645,38 +645,66 @@ def api_kpi_single(kpi_name: str):  # type: ignore
 @app.route("/api/health")
 def api_health():  # type: ignore
 		"""Health check endpoint to monitor TCP server status."""
-		global _tcp_started, _tcp_thread, _tcp_last_activity
+		global _tcp_started, _tcp_thread, _tcp_last_activity, messages_parsed, invalid_messages, bytes_received
+		
+		# Get start time from server initialization
+		import time
+		server_start_time = datetime.utcnow() - timedelta(seconds=time.time() - app.config.get('_start_time', time.time()))
+		if '_start_time' not in app.config:
+				app.config['_start_time'] = time.time()
+				server_start_time = datetime.utcnow()
 		
 		now = datetime.utcnow()
-		seconds_since_activity = (now - _tcp_last_activity).total_seconds() if _tcp_last_activity else None
+		uptime_seconds = (now - server_start_time).total_seconds()
+		seconds_since_last_data = (now - _tcp_last_activity).total_seconds() if _tcp_last_activity else None
 		
-		# Check if we can get db connection
+		# Get database statistics
+		db_stats = {"total_readings": 0, "date_range": None}
 		db_connected = False
 		try:
-				mgr = get_db_manager()
-				db_connected = mgr is not None
-		except:
-				pass
+				db = get_db_manager()
+				db_connected = db is not None
+				if db_connected:
+						db_stats = db.get_statistics()
+						date_range = db.get_date_range()
+						db_stats['date_range'] = date_range
+		except Exception as e:
+				print(f"⚠️ Error getting DB stats: {e}")
+		
+		# Get memory count
+		with _data_lock:
+				memory_count = len(weather_data)
 		
 		health = {
 				"status": "ok",
+				"start_time": server_start_time.isoformat(),
+				"uptime_seconds": uptime_seconds,
 				"tcp_server": {
-						"started": _tcp_started,
-						"thread_alive": _tcp_thread.is_alive() if _tcp_thread else False,
-						"last_activity": _tcp_last_activity.isoformat() if _tcp_last_activity else None,
-						"seconds_since_activity": seconds_since_activity,
+						"listening": _tcp_started and (_tcp_thread is not None and _tcp_thread.is_alive()),
+						"port": TCP_PORT,
+						"heartbeat_age": seconds_since_last_data if seconds_since_last_data else 0,
+						"last_connection_time": _tcp_last_activity.isoformat() if _tcp_last_activity else None,
+						"seconds_since_last_data": seconds_since_last_data,
+						"connections_received": 1 if messages_parsed > 0 else 0,  # Simplified tracking
+						"messages_parsed": messages_parsed,
+						"invalid_messages": invalid_messages,
+				},
+				"memory": {
+						"count": memory_count,
+						"max_size": MAX_SAMPLES,
 				},
 				"database": {
-						"connected": db_connected
+						"connected": db_connected,
+						"total_readings": db_stats.get('total_readings', 0),
+						"date_range": db_stats.get('date_range'),
 				},
-				"memory_readings_count": len(weather_data),
 				"timestamp": now.isoformat(),
 		}
 		
 		# Set status to warning if no activity for 10 minutes
-		if seconds_since_activity and seconds_since_activity > 600:
+		if seconds_since_last_data and seconds_since_last_data > 600:
 				health["status"] = "warning"
-				health["warnings"] = [f"No TCP activity for {int(seconds_since_activity)}s"]
+				health["warnings"] = [f"No TCP activity for {int(seconds_since_last_data)}s"]
 		
 		# Set status to error if thread is dead
 		if _tcp_started and (_tcp_thread is None or not _tcp_thread.is_alive()):
