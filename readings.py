@@ -86,46 +86,101 @@ def parse_reading(raw: str) -> Dict[str, Any] | None:
 
 
 def tcp_server():
-		"""Receives data from gateway over plain TCP.
+		"""Receives data from gateway over plain TCP with robust error handling.
 
 		Expects newline-delimited JSON objects or single JSON objects per packet.
+		Automatically recovers from errors and keeps running.
 		"""
-		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		s.bind((APP_HOST, TCP_PORT))
-		s.listen(5)
-		print(f"TCP Server listening on port {TCP_PORT}...")
-		while True:
-				client, addr = s.accept()
-				print(f"Gateway connected from {addr}")
-				buffer = ""
+		global _tcp_last_activity
+		print(f"🚀 Starting TCP Server on port {TCP_PORT}...")
+		
+		while True:  # Outer loop: restart server on fatal errors
+				s = None
 				try:
-						while True:
-								data = client.recv(4096)
-								if not data:
-										objs, buffer = _extract_json_objects(buffer)
-										for obj in objs:
-												_ingest_line(obj)
-										break
-								decoded_chunk = data.decode("utf-8", errors="ignore")
-								buffer += decoded_chunk
-								# Update debug counters
-								global bytes_received
-								bytes_received += len(data)
-								if DEBUG:
-										print(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
-								# Support newline delim (common for gateways)
-								if "\n" in buffer:
-										parts = buffer.split("\n")
-										buffer = parts.pop()
-										for p in parts:
-												_ingest_line(p)
-								# Extract any complete JSON blobs and keep remainder (partial)
-								objs, buffer = _extract_json_objects(buffer)
-								for obj in objs:
-										_ingest_line(obj)
-				finally:
-						client.close()
+						_tcp_last_activity = datetime.utcnow()
+						s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+						s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+						# Set socket timeout to detect stale connections
+						s.settimeout(300)  # 5 minute timeout
+						s.bind((APP_HOST, TCP_PORT))
+						s.listen(5)
+						print(f"✅ TCP Server listening on port {TCP_PORT}")
+						
+						while True:  # Inner loop: accept connections
+								try:
+										_tcp_last_activity = datetime.utcnow()
+										client, addr = s.accept()
+										print(f"🔌 Gateway connected from {addr}")
+										
+										# Set client socket timeout
+										client.settimeout(60)  # 60 second timeout for recv
+										
+										buffer = ""
+										try:
+												while True:
+														try:
+																_tcp_last_activity = datetime.utcnow()
+																data = client.recv(4096)
+																if not data:
+																		# Connection closed gracefully
+																		print(f"📴 Gateway {addr} disconnected")
+																		objs, buffer = _extract_json_objects(buffer)
+																		for obj in objs:
+																				_ingest_line(obj)
+																		break
+																
+																decoded_chunk = data.decode("utf-8", errors="ignore")
+																buffer += decoded_chunk
+																
+																# Update debug counters
+																global bytes_received
+																bytes_received += len(data)
+																
+																if DEBUG:
+																		print(f"[TCP] recv {len(data)} bytes, buffer_len={len(buffer)} preview={decoded_chunk[:80]!r}")
+																
+																# Support newline delim (common for gateways)
+																if "\n" in buffer:
+																		parts = buffer.split("\n")
+																		buffer = parts.pop()
+																		for p in parts:
+																				_ingest_line(p)
+																
+																# Extract any complete JSON blobs and keep remainder (partial)
+																objs, buffer = _extract_json_objects(buffer)
+																for obj in objs:
+																		_ingest_line(obj)
+																		
+														except socket.timeout:
+																print(f"⚠️  Socket timeout for {addr} - closing connection")
+																break
+														except Exception as e:
+																print(f"❌ Error receiving data from {addr}: {e}")
+																break
+												
+										finally:
+												client.close()
+												print(f"🔒 Connection closed for {addr}")
+												
+								except socket.timeout:
+										# Accept timeout - this is normal, just continue
+										continue
+								except Exception as e:
+										print(f"❌ Error accepting connection: {e}")
+										# Continue accepting new connections
+										continue
+						
+				except Exception as e:
+						print(f"💥 Fatal TCP server error: {e}")
+						print("🔄 Restarting TCP server in 5 seconds...")
+						if s:
+								try:
+										s.close()
+								except:
+										pass
+						import time
+						time.sleep(5)
+						# Loop continues, server will restart
 
 
 def _extract_json_objects(buffer: str):
@@ -240,20 +295,23 @@ def no_cache(resp):  # type: ignore
 
 _tcp_started = False
 _tcp_start_lock = threading.Lock()
+_tcp_last_activity = datetime.utcnow()  # Track last TCP activity
+_tcp_thread = None
 
 
 def ensure_tcp_started() -> None:
 	"""Start the TCP server thread exactly once in this process."""
-	global _tcp_started
+	global _tcp_started, _tcp_thread, _tcp_last_activity
 	if _tcp_started:
 		return
 	with _tcp_start_lock:
 		if _tcp_started:
 			return
-		thread = threading.Thread(target=tcp_server, daemon=True, name="tcp-server")
-		thread.start()
+		_tcp_last_activity = datetime.utcnow()
+		_tcp_thread = threading.Thread(target=tcp_server, daemon=True, name="tcp-server")
+		_tcp_thread.start()
 		_tcp_started = True
-		print(f"TCP server thread started on port {TCP_PORT}")
+		print(f"🚀 TCP server thread started on port {TCP_PORT}")
 
 
 @app.route("/api/data")
@@ -582,6 +640,51 @@ def api_kpi_single(kpi_name: str):  # type: ignore
 						jsonify({"error": str(e)}),
 						500
 				)
+
+
+@app.route("/api/health")
+def api_health():  # type: ignore
+		"""Health check endpoint to monitor TCP server status."""
+		global _tcp_started, _tcp_thread, _tcp_last_activity
+		
+		now = datetime.utcnow()
+		seconds_since_activity = (now - _tcp_last_activity).total_seconds() if _tcp_last_activity else None
+		
+		# Check if we can get db connection
+		db_connected = False
+		try:
+				mgr = get_db_manager()
+				db_connected = mgr is not None
+		except:
+				pass
+		
+		health = {
+				"status": "ok",
+				"tcp_server": {
+						"started": _tcp_started,
+						"thread_alive": _tcp_thread.is_alive() if _tcp_thread else False,
+						"last_activity": _tcp_last_activity.isoformat() if _tcp_last_activity else None,
+						"seconds_since_activity": seconds_since_activity,
+				},
+				"database": {
+						"connected": db_connected
+				},
+				"memory_readings_count": len(weather_data),
+				"timestamp": now.isoformat(),
+		}
+		
+		# Set status to warning if no activity for 10 minutes
+		if seconds_since_activity and seconds_since_activity > 600:
+				health["status"] = "warning"
+				health["warnings"] = [f"No TCP activity for {int(seconds_since_activity)}s"]
+		
+		# Set status to error if thread is dead
+		if _tcp_started and (_tcp_thread is None or not _tcp_thread.is_alive()):
+				health["status"] = "error"
+				health["errors"] = ["TCP server thread is not running"]
+		
+		status_code = 200 if health["status"] == "ok" else 503
+		return make_response(jsonify(health), status_code)
 
 
 @app.route("/api/parameters")
