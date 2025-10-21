@@ -321,11 +321,47 @@ def api_data():
 	Query params:
 		window: Time window in minutes (e.g., 60, 120, 1440)
 		date: Specific date in YYYY-MM-DD format (returns full day)
+		start_date: Start date in YYYY-MM-DD format (requires end_date)
+		end_date: End date in YYYY-MM-DD format (requires start_date)
 		limit: Max number of readings (default 1000)
 	"""
 	ensure_tcp_started()
 	
-	# Check for date parameter first
+	# Check for date range parameters
+	start_date_param = request.args.get('start_date')
+	end_date_param = request.args.get('end_date')
+	
+	if start_date_param and end_date_param:
+		# Return date range from database
+		try:
+			db = get_db_manager()
+			start_dt = datetime.strptime(start_date_param, '%Y-%m-%d')
+			end_dt = datetime.strptime(end_date_param, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+			
+			readings = db.get_readings_by_time_range(start_dt, end_dt)
+			
+			# Format readings
+			formatted = []
+			for r in readings:
+				formatted.append({
+					'time': r.get('timestamp').isoformat() if isinstance(r.get('timestamp'), datetime) else r.get('timestamp'),
+					'temp': float(r.get('temperature')) if r.get('temperature') else None,
+					'rh': float(r.get('humidity')) if r.get('humidity') else None,
+					'lux': float(r.get('lux')) if r.get('lux') else None,
+					'irradiance': float(r.get('irradiance')) if r.get('irradiance') else None,
+				})
+			
+			return jsonify({
+				'readings': formatted,
+				'count': len(formatted),
+				'source': 'database',
+				'start_date': start_date_param,
+				'end_date': end_date_param
+			})
+		except Exception as e:
+			return jsonify({'error': str(e)}), 500
+	
+	# Check for single date parameter
 	date_param = request.args.get('date')
 	if date_param:
 		# Return full day from database

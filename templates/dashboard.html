@@ -5,6 +5,8 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -28,10 +30,20 @@
 	
 	<!-- Date Picker -->
 	<div class="date-picker-group">
-		<label for="date-picker">📅 View Date:</label>
-		<input type="date" id="date-picker" class="date-input" />
-		<button id="load-day-btn" class="load-btn">Load Day</button>
-		<button id="today-btn" class="today-btn">Today (Live)</button>
+		<div class="date-option">
+			<label for="date-picker">📅 Single Day:</label>
+			<input type="date" id="date-picker" class="date-input" />
+			<button id="load-day-btn" class="load-btn">Load Day</button>
+		</div>
+		<div class="date-option-separator">OR</div>
+		<div class="date-option">
+			<label for="start-date-picker">📅 Date Range:</label>
+			<input type="date" id="start-date-picker" class="date-input" />
+			<span class="date-range-to">to</span>
+			<input type="date" id="end-date-picker" class="date-input" />
+			<button id="load-range-btn" class="load-btn">Load Range</button>
+		</div>
+		<button id="today-btn" class="today-btn">📍 Today (Live)</button>
 	</div>
 </div>
 
@@ -107,27 +119,58 @@
 </div>
 <div class="grid-2x2">
 	<div class="card">
-		<h2>Temperature</h2>
-		<div class="chart-container">
+		<div class="chart-header">
+			<h2>Temperature</h2>
+			<button class="fullscreen-btn" onclick="toggleFullscreen('temp')" title="Fullscreen">⛶</button>
+		</div>
+		<div class="chart-container" id="container-temp">
 			<canvas id="chart-temp"></canvas>
 		</div>
 	</div>
 	<div class="card">
-		<h2>Relative Humidity</h2>
-		<div class="chart-container">
+		<div class="chart-header">
+			<h2>Relative Humidity</h2>
+			<button class="fullscreen-btn" onclick="toggleFullscreen('rh')" title="Fullscreen">⛶</button>
+		</div>
+		<div class="chart-container" id="container-rh">
 			<canvas id="chart-rh"></canvas>
 		</div>
 	</div>
 	<div class="card">
-		<h2>Light (Lux)</h2>
-		<div class="chart-container">
+		<div class="chart-header">
+			<h2>Light (Lux)</h2>
+			<button class="fullscreen-btn" onclick="toggleFullscreen('lux')" title="Fullscreen">⛶</button>
+		</div>
+		<div class="chart-container" id="container-lux">
 			<canvas id="chart-lux"></canvas>
 		</div>
 	</div>
 	<div class="card">
-		<h2>Solar Irradiance (W/m²)</h2>
-		<div class="chart-container">
+		<div class="chart-header">
+			<h2>Solar Irradiance (W/m²)</h2>
+			<button class="fullscreen-btn" onclick="toggleFullscreen('irradiance')" title="Fullscreen">⛶</button>
+		</div>
+		<div class="chart-container" id="container-irradiance">
 			<canvas id="chart-irradiance"></canvas>
+		</div>
+	</div>
+</div>
+
+<!-- Fullscreen Chart Modal -->
+<div class="chart-fullscreen-modal" id="chart-fullscreen-modal" onclick="closeFullscreenChart(event)">
+	<div class="fullscreen-chart-content" onclick="event.stopPropagation()">
+		<div class="fullscreen-header">
+			<h2 id="fullscreen-chart-title">Chart</h2>
+			<div class="fullscreen-controls">
+				<button class="control-btn" onclick="resetZoom()" title="Reset Zoom">🔄 Reset</button>
+				<button class="control-btn close-btn" onclick="closeFullscreenChart()">&times;</button>
+			</div>
+		</div>
+		<div class="fullscreen-chart-container">
+			<canvas id="chart-fullscreen"></canvas>
+		</div>
+		<div class="fullscreen-hint">
+			💡 Use mouse wheel to zoom, click and drag to pan, or pinch on touch devices
 		</div>
 	</div>
 </div>

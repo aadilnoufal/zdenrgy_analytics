@@ -222,7 +222,7 @@ th {
 .date-picker-group {
 	display: flex;
 	align-items: center;
-	gap: 0.8rem;
+	gap: 1rem;
 	flex-wrap: wrap;
 	padding-top: 1rem;
 	border-top: 1px solid #2a2f3a;
@@ -231,6 +231,25 @@ th {
 .date-picker-group label {
 	font-size: 0.9rem;
 	font-weight: 500;
+	color: #9aa4b1;
+}
+
+.date-option {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.date-option-separator {
+	font-size: 0.85rem;
+	color: #5a6273;
+	font-weight: 600;
+	padding: 0 0.5rem;
+}
+
+.date-range-to {
+	font-size: 0.85rem;
 	color: #9aa4b1;
 }
 
@@ -636,5 +655,167 @@ th {
 	to {
 		transform: translateY(0);
 		opacity: 1;
+	}
+}
+
+/* Chart Header with Fullscreen Button */
+.chart-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.6rem;
+}
+
+.chart-header h2 {
+	margin: 0;
+}
+
+.fullscreen-btn {
+	background: #2d3341;
+	color: #9aa4b1;
+	border: 1px solid #3a4150;
+	border-radius: 6px;
+	padding: 0.4rem 0.7rem;
+	cursor: pointer;
+	font-size: 1.1rem;
+	transition: all 0.2s;
+	line-height: 1;
+}
+
+.fullscreen-btn:hover {
+	background: #3a4150;
+	color: #5eb3ff;
+	border-color: #5eb3ff;
+	transform: scale(1.05);
+}
+
+/* Fullscreen Chart Modal */
+.chart-fullscreen-modal {
+	display: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.95);
+	z-index: 2000;
+	animation: fadeIn 0.2s ease;
+}
+
+.chart-fullscreen-modal.show {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.fullscreen-chart-content {
+	background: #1c1f26;
+	border: 2px solid #2d3341;
+	border-radius: 12px;
+	width: 95vw;
+	height: 90vh;
+	display: flex;
+	flex-direction: column;
+	animation: slideIn 0.3s ease;
+	overflow: hidden;
+}
+
+.fullscreen-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 20px 24px;
+	border-bottom: 1px solid #2d3341;
+	flex-shrink: 0;
+}
+
+.fullscreen-header h2 {
+	margin: 0;
+	font-size: 1.5rem;
+	color: #d0d7e1;
+}
+
+.fullscreen-controls {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+.control-btn {
+	background: #2d3341;
+	color: #d0d7e1;
+	border: 1px solid #3a4150;
+	border-radius: 8px;
+	padding: 0.6rem 1.2rem;
+	cursor: pointer;
+	font-size: 0.95rem;
+	font-weight: 500;
+	transition: all 0.2s;
+	white-space: nowrap;
+}
+
+.control-btn:hover {
+	background: #3a4150;
+	border-color: #5eb3ff;
+	color: #fff;
+	transform: translateY(-1px);
+}
+
+.control-btn.close-btn {
+	font-size: 1.8rem;
+	padding: 0.3rem 0.8rem;
+	line-height: 1;
+}
+
+.fullscreen-chart-container {
+	flex: 1;
+	padding: 20px;
+	position: relative;
+	min-height: 0;
+}
+
+.fullscreen-chart-container canvas {
+	cursor: grab;
+}
+
+.fullscreen-chart-container canvas:active {
+	cursor: grabbing;
+}
+
+.fullscreen-hint {
+	padding: 12px 24px;
+	border-top: 1px solid #2d3341;
+	font-size: 0.85rem;
+	color: #9aa4b1;
+	text-align: center;
+	background: #191c23;
+	flex-shrink: 0;
+}
+
+/* Responsive adjustments for fullscreen */
+@media (max-width: 768px) {
+	.fullscreen-chart-content {
+		width: 100vw;
+		height: 100vh;
+		border-radius: 0;
+	}
+	
+	.fullscreen-header {
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	
+	.fullscreen-header h2 {
+		font-size: 1.2rem;
+	}
+	
+	.control-btn {
+		padding: 0.5rem 0.8rem;
+		font-size: 0.85rem;
+	}
+	
+	.fullscreen-hint {
+		font-size: 0.75rem;
+		padding: 10px 16px;
 	}
 }
