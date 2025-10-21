@@ -461,3 +461,180 @@ th {
 		width: 100%;
 	}
 }
+
+/* System Status Indicator */
+.system-status {
+	position: fixed;
+	bottom: 20px;
+	right: 20px;
+	background: #1e2330;
+	border: 2px solid #2d3341;
+	border-radius: 12px;
+	padding: 12px 20px;
+	cursor: pointer;
+	transition: all 0.3s ease;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	z-index: 100;
+}
+
+.system-status:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+	border-color: #3d4351;
+}
+
+.status-indicator {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+	font-size: 0.95rem;
+}
+
+.status-dot {
+	font-size: 1.5rem;
+	line-height: 1;
+	animation: pulse 2s ease-in-out infinite;
+}
+
+.status-dot.active {
+	color: #4ade80;
+}
+
+.status-dot.warning {
+	color: #facc15;
+}
+
+.status-dot.inactive {
+	color: #ef4444;
+}
+
+.status-hint {
+	font-size: 0.7rem;
+	opacity: 0.6;
+	margin-top: 2px;
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.6; }
+}
+
+/* Health Modal */
+.modal {
+	display: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 1000;
+	animation: fadeIn 0.2s ease;
+}
+
+.modal.show {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.modal-content {
+	background: #1e2330;
+	border: 2px solid #2d3341;
+	border-radius: 12px;
+	max-width: 600px;
+	width: 90%;
+	max-height: 80vh;
+	overflow-y: auto;
+	animation: slideIn 0.3s ease;
+}
+
+.modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 20px;
+	border-bottom: 1px solid #2d3341;
+}
+
+.modal-header h2 {
+	margin: 0;
+	font-size: 1.5rem;
+}
+
+.modal-close {
+	background: none;
+	border: none;
+	color: #8b92a7;
+	font-size: 2rem;
+	cursor: pointer;
+	padding: 0;
+	width: 32px;
+	height: 32px;
+	line-height: 1;
+	transition: color 0.2s;
+}
+
+.modal-close:hover {
+	color: #fff;
+}
+
+.modal-body {
+	padding: 20px;
+}
+
+.health-metric {
+	margin-bottom: 16px;
+	padding: 12px;
+	background: #252a38;
+	border-radius: 8px;
+	border-left: 3px solid #4ade80;
+}
+
+.health-metric.warning {
+	border-left-color: #facc15;
+}
+
+.health-metric.error {
+	border-left-color: #ef4444;
+}
+
+.health-metric-label {
+	font-size: 0.85rem;
+	opacity: 0.7;
+	margin-bottom: 4px;
+}
+
+.health-metric-value {
+	font-size: 1.1rem;
+	font-weight: 600;
+}
+
+.health-metric-detail {
+	font-size: 0.8rem;
+	opacity: 0.6;
+	margin-top: 4px;
+}
+
+.loading {
+	text-align: center;
+	padding: 40px;
+	opacity: 0.6;
+}
+
+@keyframes fadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes slideIn {
+	from {
+		transform: translateY(-20px);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}

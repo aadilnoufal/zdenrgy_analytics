@@ -147,6 +147,29 @@
 		</tbody>
 	</table>
 </div>
+
+<!-- System Status Indicator -->
+<div class="system-status" id="system-status" onclick="showHealthDetails()">
+	<div class="status-indicator">
+		<span class="status-dot" id="status-dot">●</span>
+		<span class="status-text" id="status-text">Checking...</span>
+	</div>
+	<div class="status-hint">Click for details</div>
+</div>
+
+<!-- Health Details Modal -->
+<div class="modal" id="health-modal" onclick="closeHealthModal(event)">
+	<div class="modal-content" onclick="event.stopPropagation()">
+		<div class="modal-header">
+			<h2>System Health Details</h2>
+			<button class="modal-close" onclick="closeHealthModal()">&times;</button>
+		</div>
+		<div class="modal-body" id="health-details">
+			<div class="loading">Loading health data...</div>
+		</div>
+	</div>
+</div>
+
 <footer>Data updates automatically. Built with Flask + Chart.js. Upgrade to WebSockets later for sub-second latency.</footer>
 {% endblock %}
 

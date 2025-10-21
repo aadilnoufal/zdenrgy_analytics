@@ -320,6 +320,8 @@ function setupEventListeners() {
 function startAutoRefresh() {
 	stopAutoRefresh();
 	refreshInterval = setInterval(refresh, 5000);
+	// Also check system health every 10 seconds
+	setInterval(updateSystemStatus, 10000);
 }
 
 function stopAutoRefresh() {
@@ -329,9 +331,136 @@ function stopAutoRefresh() {
 	}
 }
 
+// System Status Functions
+async function updateSystemStatus() {
+	try {
+		const resp = await fetch('/api/health');
+		const health = await resp.json();
+		
+		const statusDot = document.getElementById('status-dot');
+		const statusText = document.getElementById('status-text');
+		
+		// Determine status based on health metrics
+		let status = 'active';
+		let statusLabel = 'Active';
+		
+		if (!health.tcp_server.listening) {
+			status = 'inactive';
+			statusLabel = 'TCP Server Down';
+		} else if (health.tcp_server.seconds_since_last_data > 300) {
+			// No data for 5+ minutes
+			status = 'warning';
+			statusLabel = 'No Recent Data';
+		} else if (health.memory.count === 0) {
+			status = 'warning';
+			statusLabel = 'No Data';
+		}
+		
+		// Update indicator
+		statusDot.className = `status-dot ${status}`;
+		statusText.textContent = statusLabel;
+		
+	} catch (err) {
+		console.error('Failed to fetch health status:', err);
+		const statusDot = document.getElementById('status-dot');
+		const statusText = document.getElementById('status-text');
+		statusDot.className = 'status-dot inactive';
+		statusText.textContent = 'Connection Error';
+	}
+}
+
+async function showHealthDetails() {
+	const modal = document.getElementById('health-modal');
+	const detailsDiv = document.getElementById('health-details');
+	
+	modal.classList.add('show');
+	detailsDiv.innerHTML = '<div class="loading">Loading health data...</div>';
+	
+	try {
+		const resp = await fetch('/api/health');
+		const health = await resp.json();
+		
+		const uptime = formatUptime(health.uptime_seconds);
+		const lastData = health.tcp_server.seconds_since_last_data !== null
+			? formatTimeSince(health.tcp_server.seconds_since_last_data)
+			: 'Never';
+		
+		detailsDiv.innerHTML = `
+			<div class="health-metric ${health.tcp_server.listening ? '' : 'error'}">
+				<div class="health-metric-label">TCP Server Status</div>
+				<div class="health-metric-value">${health.tcp_server.listening ? '🟢 Listening' : '🔴 Not Listening'}</div>
+				<div class="health-metric-detail">Port: ${health.tcp_server.port} | Heartbeat: ${health.tcp_server.heartbeat_age}s ago</div>
+			</div>
+			
+			<div class="health-metric">
+				<div class="health-metric-label">Last Data Received</div>
+				<div class="health-metric-value">${lastData}</div>
+				${health.tcp_server.last_connection_time ? 
+					`<div class="health-metric-detail">Last connection: ${new Date(health.tcp_server.last_connection_time).toLocaleString()}</div>` : ''}
+			</div>
+			
+			<div class="health-metric">
+				<div class="health-metric-label">Server Uptime</div>
+				<div class="health-metric-value">${uptime}</div>
+				<div class="health-metric-detail">Started: ${new Date(health.start_time).toLocaleString()}</div>
+			</div>
+			
+			<div class="health-metric">
+				<div class="health-metric-label">In-Memory Buffer</div>
+				<div class="health-metric-value">${health.memory.count} readings</div>
+				<div class="health-metric-detail">Max capacity: ${health.memory.max_size}</div>
+			</div>
+			
+			<div class="health-metric">
+				<div class="health-metric-label">Database</div>
+				<div class="health-metric-value">${health.database.total_readings.toLocaleString()} total readings</div>
+				${health.database.date_range ? 
+					`<div class="health-metric-detail">Range: ${health.database.date_range.min_date} to ${health.database.date_range.max_date}</div>` : ''}
+			</div>
+			
+			<div class="health-metric ${health.tcp_server.connections_received === 0 ? 'warning' : ''}">
+				<div class="health-metric-label">Connection Stats</div>
+				<div class="health-metric-value">${health.tcp_server.connections_received} connections received</div>
+				<div class="health-metric-detail">Messages: ${health.tcp_server.messages_parsed} valid, ${health.tcp_server.invalid_messages} invalid</div>
+			</div>
+		`;
+	} catch (err) {
+		detailsDiv.innerHTML = `
+			<div class="health-metric error">
+				<div class="health-metric-label">Error</div>
+				<div class="health-metric-value">Failed to load health data</div>
+				<div class="health-metric-detail">${err.message}</div>
+			</div>
+		`;
+	}
+}
+
+function closeHealthModal(event) {
+	const modal = document.getElementById('health-modal');
+	modal.classList.remove('show');
+}
+
+function formatUptime(seconds) {
+	const days = Math.floor(seconds / 86400);
+	const hours = Math.floor((seconds % 86400) / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	
+	if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+	if (hours > 0) return `${hours}h ${minutes}m`;
+	return `${minutes}m`;
+}
+
+function formatTimeSince(seconds) {
+	if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+	if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+	if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+	return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 window.addEventListener('DOMContentLoaded', () => {
 	setupEventListeners();
 	loadAvailableDates();
+	updateSystemStatus(); // Initial status check
 	startAutoRefresh();
 	refresh();
 });
