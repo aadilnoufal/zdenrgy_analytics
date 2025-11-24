@@ -819,3 +819,73 @@ th {
 		padding: 10px 16px;
 	}
 }
+
+/* Solar Panel Cleaning Recommendations */
+.cleaning-status-card {
+	background: #191c23;
+	border-radius: 8px;
+	padding: 1.5rem;
+}
+
+.cleaning-metric {
+	border-left: 4px solid #4ade80;
+	padding-left: 1rem;
+}
+
+.cleaning-metric.status-good {
+	border-left-color: #4ade80;
+	background: linear-gradient(90deg, rgba(74, 222, 128, 0.1) 0%, transparent 100%);
+}
+
+.cleaning-metric.status-info {
+	border-left-color: #5eb3ff;
+	background: linear-gradient(90deg, rgba(94, 179, 255, 0.1) 0%, transparent 100%);
+}
+
+.cleaning-metric.status-monitoring {
+	border-left-color: #ffd166;
+	background: linear-gradient(90deg, rgba(255, 209, 102, 0.1) 0%, transparent 100%);
+}
+
+.cleaning-metric.status-warning {
+	border-left-color: #facc15;
+	background: linear-gradient(90deg, rgba(250, 204, 21, 0.1) 0%, transparent 100%);
+}
+
+.cleaning-metric.status-critical {
+	border-left-color: #ef4444;
+	background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, transparent 100%);
+}
+
+.cleaning-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 1rem;
+	margin-top: 1rem;
+}
+
+.stat-item {
+	background: #1c1f26;
+	border: 1px solid #2a2f3a;
+	border-radius: 8px;
+	padding: 1rem;
+	text-align: center;
+}
+
+.stat-label {
+	font-size: 0.8rem;
+	color: #9aa4b1;
+	margin-bottom: 0.5rem;
+}
+
+.stat-value {
+	font-size: 1.5rem;
+	font-weight: 700;
+	color: #5eb3ff;
+}
+
+@media (max-width: 768px) {
+	.cleaning-stats-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}

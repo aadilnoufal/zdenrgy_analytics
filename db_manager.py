@@ -157,7 +157,8 @@ class DatabaseManager:
             
             # Use current time if timestamp not provided
             if timestamp is None:
-                timestamp = datetime.utcnow()
+                # Database stores GMT+8, so add 8 hours to UTC
+                timestamp = datetime.utcnow() + timedelta(hours=8)
             # Just use timestamp as-is (no timezone conversion)
             
             # Try inserting with sensor_id, fall back to without if column doesn't exist
@@ -251,8 +252,10 @@ class DatabaseManager:
                 self.return_connection(conn)
     
     def get_readings_by_window(self, window_minutes: int = 60) -> List[Dict]:
-        """Get sensor readings for the last N minutes"""
-        end_time = datetime.utcnow()
+        """Get sensor readings for the last N minutes (based on database time GMT+8)"""
+        # Database stores GMT+8 time, so use that for queries
+        # Add 8 hours to current UTC time to match database timezone
+        end_time = datetime.utcnow() + timedelta(hours=8)
         start_time = end_time - timedelta(minutes=window_minutes)
         return self.get_readings_by_time_range(start_time, end_time)
     
@@ -364,7 +367,8 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             if timestamp is None:
-                timestamp = datetime.now()
+                # Database stores GMT+8, so add 8 hours to UTC
+                timestamp = datetime.utcnow() + timedelta(hours=8)
             
             cursor.execute("""
                 INSERT INTO kpi_snapshots (timestamp, kpi_name, value, unit, metadata)
@@ -398,7 +402,8 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            start_time = datetime.now() - timedelta(hours=hours)
+            # Database stores GMT+8, so add 8 hours to UTC for correct time range
+            start_time = datetime.utcnow() + timedelta(hours=8) - timedelta(hours=hours)
             
             cursor.execute("""
                 SELECT timestamp, kpi_name, value, unit, metadata
@@ -464,7 +469,8 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+            # Database stores GMT+8, so add 8 hours to UTC
+            cutoff_date = datetime.utcnow() + timedelta(hours=8) - timedelta(days=days_to_keep)
             
             # Delete old sensor readings
             cursor.execute("""

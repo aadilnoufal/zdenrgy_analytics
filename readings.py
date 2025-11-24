@@ -15,7 +15,7 @@ import json
 import socket
 import threading
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Deque, Dict, Any, List
 import csv
 from io import StringIO
@@ -28,6 +28,9 @@ from kpi_calculator import create_kpi_calculator
 
 # Import database manager
 from db_manager import get_db_manager
+
+# Import cleaning tracker
+from cleaning_tracker import get_cleaning_tracker
 
 APP_HOST = "0.0.0.0"
 HTTP_PORT = 5000
@@ -237,32 +240,33 @@ def _ingest_line(line: str) -> None:
 				with _data_lock:
 						weather_data.append(reading)
 				
-				# Store in database for persistence
-				try:
-						db = get_db_manager()
-						# Parse timestamp - keep as-is from sensor (assumed UTC or local time)
-						timestamp = datetime.fromisoformat(reading['time_iso'])
-						if timestamp.tzinfo is None:
-								# If naive, assume UTC
-								timestamp = timestamp.replace(tzinfo=None)
-						
-						# Calculate irradiance if not present
-						irradiance = reading.get('irradiance')
-						if irradiance is None and reading.get('lux'):
-								irradiance = reading['lux'] / 127.0  # Convert lux to W/m²
-						
-						db.insert_sensor_reading(
-								temperature=reading.get('temp'),
-								humidity=reading.get('rh'),
-								lux=reading.get('lux'),
-								irradiance=irradiance,
-								timestamp=timestamp,
-								sensor_id=reading.get('id', 'unknown')
-						)
-						if DEBUG:
-								print(f"✅ Saved to DB: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-				except Exception as e:
-						print(f"⚠️  Failed to store reading in database: {e}")
+		# Store in database for persistence
+		try:
+				db = get_db_manager()
+				# Parse timestamp - keep as-is from sensor (GMT+8 China time)
+				# Database stores GMT+8, conversion to Qatar time happens on retrieval
+				timestamp = datetime.fromisoformat(reading['time_iso'])
+				if timestamp.tzinfo is None:
+						# Store as naive datetime (sensor's GMT+8 time)
+						timestamp = timestamp.replace(tzinfo=None)
+				
+				# Calculate irradiance if not present
+				irradiance = reading.get('irradiance')
+				if irradiance is None and reading.get('lux'):
+						irradiance = reading['lux'] / 127.0  # Convert lux to W/m²
+				
+				db.insert_sensor_reading(
+						temperature=reading.get('temp'),
+						humidity=reading.get('rh'),
+						lux=reading.get('lux'),
+						irradiance=irradiance,
+						timestamp=timestamp,
+						sensor_id=reading.get('id', 'unknown')
+				)
+				if DEBUG:
+						print(f"✅ Saved to DB: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+		except Exception as e:
+				print(f"⚠️  Failed to store reading in database: {e}")
 				
 				messages_parsed += 1
 				last_valid_raw = line[:500]
@@ -343,12 +347,19 @@ def api_data():
 			# Format readings
 			formatted = []
 			for r in readings:
+				# Return database timestamp as-is (GMT+8)
+				ts = r.get('timestamp')
+				if isinstance(ts, datetime):
+					time_str = ts.isoformat()
+				else:
+					time_str = str(ts)
+
 				formatted.append({
-					'time': r.get('timestamp').isoformat() if isinstance(r.get('timestamp'), datetime) else r.get('timestamp'),
-					'temp': float(r.get('temperature')) if r.get('temperature') else None,
-					'rh': float(r.get('humidity')) if r.get('humidity') else None,
-					'lux': float(r.get('lux')) if r.get('lux') else None,
-					'irradiance': float(r.get('irradiance')) if r.get('irradiance') else None,
+					'time': time_str,
+					'temp': float(r.get('temperature')) if r.get('temperature') is not None else None,
+					'rh': float(r.get('humidity')) if r.get('humidity') is not None else None,
+					'lux': float(r.get('lux')) if r.get('lux') is not None else None,
+					'irradiance': float(r.get('irradiance')) if r.get('irradiance') is not None else None,
 				})
 			
 			return jsonify({
@@ -368,9 +379,34 @@ def api_data():
 		try:
 			db = get_db_manager()
 			readings = db.get_readings_by_date(date_param)
+			# Normalize/format to match other endpoints
+			formatted = []
+			for r in readings:
+				# Support either DB-shaped or API-shaped rows
+				# Return database timestamp as-is (GMT+8)
+				ts = r.get('timestamp', r.get('time'))
+				if isinstance(ts, datetime):
+					time_str = ts.isoformat()
+				else:
+					time_str = str(ts)
+
+				# Choose value keys depending on shape
+				temp_val = r.get('temperature', r.get('temp'))
+				rh_val = r.get('humidity', r.get('rh'))
+				lux_val = r.get('lux')
+				irr_val = r.get('irradiance')
+
+				formatted.append({
+					'time': time_str,
+					'temp': float(temp_val) if temp_val is not None else None,
+					'rh': float(rh_val) if rh_val is not None else None,
+					'lux': float(lux_val) if lux_val is not None else None,
+					'irradiance': float(irr_val) if irr_val is not None else None,
+				})
+
 			return jsonify({
-				'readings': readings,
-				'count': len(readings),
+				'readings': formatted,
+				'count': len(formatted),
 				'source': 'database',
 				'date': date_param
 			})
@@ -391,12 +427,19 @@ def api_data():
 			# Format readings
 			formatted = []
 			for r in readings:
+				# Return database timestamp as-is (GMT+8)
+				ts = r.get('timestamp')
+				if isinstance(ts, datetime):
+					time_str = ts.isoformat()
+				else:
+					time_str = str(ts)
+
 				formatted.append({
-					'time': r.get('timestamp').isoformat() if isinstance(r.get('timestamp'), datetime) else r.get('timestamp'),
-					'temp': float(r.get('temperature')) if r.get('temperature') else None,
-					'rh': float(r.get('humidity')) if r.get('humidity') else None,
-					'lux': float(r.get('lux')) if r.get('lux') else None,
-					'irradiance': float(r.get('irradiance')) if r.get('irradiance') else None,
+					'time': time_str,
+					'temp': float(r.get('temperature')) if r.get('temperature') is not None else None,
+					'rh': float(r.get('humidity')) if r.get('humidity') is not None else None,
+					'lux': float(r.get('lux')) if r.get('lux') is not None else None,
+					'irradiance': float(r.get('irradiance')) if r.get('irradiance') is not None else None,
 				})
 			
 			# Apply limit
@@ -431,13 +474,25 @@ def api_data():
 	with _data_lock:
 		data = list(weather_data)[-limit:]
 	
-	formatted = [{
-		'time': r.get('time_iso', r.get('time')),
-		'temp': r.get('temp'),
-		'rh': r.get('rh'),
-		'lux': r.get('lux'),
-		'irradiance': r.get('irradiance', r.get('lux', 0) / 127.0 if r.get('lux') else 0)
-	} for r in data]
+	formatted = []
+	for r in data:
+		# Emit UTC ISO string if possible
+		ts_str = r.get('time_iso', r.get('time'))
+		# If the sensor time is naive ISO without tz, append Z to indicate UTC
+		if isinstance(ts_str, str) and 'Z' not in ts_str and '+' not in ts_str:
+			try:
+				# Validate parse; if parseable, mark as UTC
+				datetime.fromisoformat(ts_str)
+				ts_str = ts_str + 'Z'
+			except Exception:
+				pass
+		formatted.append({
+			'time': ts_str,
+			'temp': r.get('temp'),
+			'rh': r.get('rh'),
+			'lux': r.get('lux'),
+			'irradiance': r.get('irradiance', (r.get('lux') / 127.0) if (r.get('lux') is not None) else 0)
+		})
 	
 	return jsonify({
 		'readings': formatted,
@@ -824,6 +879,63 @@ def debug_toggle():  # type: ignore
 		global DEBUG
 		DEBUG = not DEBUG
 		return jsonify({"debug": DEBUG})
+
+
+@app.route("/api/cleaning/stats")
+def api_cleaning_stats():  # type: ignore
+		"""Get solar panel cleaning statistics and recommendations"""
+		try:
+				tracker = get_cleaning_tracker()
+				stats = tracker.get_cleaning_stats()
+				return jsonify(stats)
+		except Exception as e:
+				return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/cleaning/record", methods=["POST"])
+def api_record_cleaning():  # type: ignore
+		"""Record a panel cleaning event"""
+		try:
+				tracker = get_cleaning_tracker()
+				data = request.get_json() or {}
+				
+				cleaning_date = data.get('cleaning_date')
+				if cleaning_date:
+						cleaning_date = datetime.fromisoformat(cleaning_date)
+				
+				baseline_ratio = data.get('baseline_ratio')
+				notes = data.get('notes', '')
+				
+				success = tracker.record_cleaning(
+						cleaning_date=cleaning_date,
+						baseline_ratio=baseline_ratio,
+						notes=notes
+				)
+				
+				if success:
+						return jsonify({
+								"success": True,
+								"message": "Cleaning recorded successfully"
+						})
+				else:
+						return jsonify({
+								"success": False,
+								"error": "Failed to record cleaning"
+						}), 500
+		except Exception as e:
+				return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/cleaning/history")
+def api_cleaning_history():  # type: ignore
+		"""Get cleaning history"""
+		try:
+				tracker = get_cleaning_tracker()
+				limit = request.args.get('limit', default=10, type=int)
+				history = tracker.get_cleaning_history(limit=limit)
+				return jsonify({"history": history})
+		except Exception as e:
+				return jsonify({"error": str(e)}), 500
 
 
 def main():

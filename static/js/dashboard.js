@@ -35,15 +35,13 @@ async function fetchData() {
 
 function buildSeries(raw, field) {
 	const series = [];
-	let prevTime = null;
+	let prevTimeStr = null;
 	for (const r of raw) {
-		const t = new Date(r.time).getTime();
-		if (prevTime !== null && (t - prevTime) > GAP_MS) {
-			// Insert a null point to create a visible break
-			series.push({x: new Date(prevTime + 1), y: null});
-		}
-		series.push({x: new Date(t), y: r[field]});
-		prevTime = t;
+		// Display timestamp as-is from database (no timezone conversion)
+		const timeStr = r.time.replace('T', ' ').replace(/\.\d+/, '').split('+')[0].split('Z')[0];
+		
+		series.push({x: timeStr, y: r[field]});
+		prevTimeStr = timeStr;
 	}
 	return series;
 }
@@ -73,8 +71,7 @@ function makeChart(ctx, label, color, yTitle, isFullscreen = false) {
 			},
 			scales: {
 				x: {
-					type: 'time',
-					time: { tooltipFormat: 'yyyy-MM-dd HH:mm:ss' },
+					type: 'category',
 					ticks: { 
 						color: '#9aa4b1', 
 						maxRotation: 0,
@@ -207,7 +204,9 @@ function updateMeta(raw) {
 	document.getElementById('current-rh').textContent = (latest.rh !== null && latest.rh !== undefined) ? latest.rh.toFixed(2) : '0.00';
 	document.getElementById('current-lux').textContent = (latest.lux !== null && latest.lux !== undefined) ? latest.lux.toFixed(2) : '0.00';
 	document.getElementById('current-irradiance').textContent = (latest.irradiance !== null && latest.irradiance !== undefined) ? latest.irradiance.toFixed(3) : '0.000';
-	document.getElementById('latest-time').textContent = new Date(latest.time).toLocaleString();
+	// Display database time as-is (no timezone conversion)
+	const timeStr = latest.time.replace('T', ' ').replace(/\.\d+/, '').split('+')[0].split('Z')[0];
+	document.getElementById('latest-time').textContent = timeStr;
 	
 	// Update mode display
 	const modeDisplay = document.getElementById('mode-display');
@@ -235,8 +234,10 @@ function updateTable(raw) {
 		const rh = (r.rh !== null && r.rh !== undefined) ? r.rh.toFixed(2) : '0.00';
 		const lux = (r.lux !== null && r.lux !== undefined) ? r.lux.toFixed(2) : '0.00';
 		const irradiance = (r.irradiance !== null && r.irradiance !== undefined) ? r.irradiance.toFixed(3) : '0.000';
+		// Display database time as-is (no timezone conversion)
+		const timeStr = r.time.replace('T', ' ').replace(/\.\d+/, '').split('+')[0].split('Z')[0];
 		tr.innerHTML = `
-			<td>${new Date(r.time).toLocaleString()}</td>
+			<td>${timeStr}</td>
 			<td>${temp}</td>
 			<td>${rh}</td>
 			<td>${lux}</td>

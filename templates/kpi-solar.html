@@ -111,6 +111,63 @@
 	</div>
 </div>
 
+<!-- Solar Panel Cleaning Recommendations -->
+<div class="card" style="margin-top: 1.5rem;">
+	<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+		<h2>🧹 Panel Cleaning Recommendations</h2>
+		<button id="record-cleaning-btn" class="nav-btn" style="font-size: 0.9rem;">Record Cleaning</button>
+	</div>
+	
+	<div id="cleaning-status" class="cleaning-status-card">
+		<div class="loading">Loading cleaning data...</div>
+	</div>
+	
+	<div id="cleaning-history-section" style="margin-top: 1.5rem;">
+		<h3 style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">Recent Cleaning History</h3>
+		<table style="font-size: 0.85rem;">
+			<thead>
+				<tr>
+					<th>Date</th>
+					<th>Days Ago</th>
+					<th>Baseline Ratio</th>
+					<th>Notes</th>
+				</tr>
+			</thead>
+			<tbody id="cleaning-history">
+				<tr>
+					<td colspan="4" style="text-align: center; opacity: 0.5;">No cleaning records yet</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+</div>
+
+<!-- Record Cleaning Modal -->
+<div class="modal" id="cleaning-modal" onclick="closeCleaningModal(event)">
+	<div class="modal-content" onclick="event.stopPropagation()">
+		<div class="modal-header">
+			<h2>Record Panel Cleaning</h2>
+			<button class="modal-close" onclick="closeCleaningModal()">&times;</button>
+		</div>
+		<div class="modal-body">
+			<form id="cleaning-form" style="display: flex; flex-direction: column; gap: 1rem;">
+				<div>
+					<label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cleaning Date</label>
+					<input type="date" id="cleaning-date" class="date-input" style="width: 100%;" required>
+				</div>
+				<div>
+					<label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Notes (optional)</label>
+					<textarea id="cleaning-notes" rows="3" style="width: 100%; background: #2d3341; color: #eee; border: 1px solid #3a4150; border-radius: 8px; padding: 0.6rem; font-family: inherit;"></textarea>
+				</div>
+				<div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+					<button type="submit" class="export-btn" style="flex: 1;">Record Cleaning</button>
+					<button type="button" onclick="closeCleaningModal()" class="nav-btn" style="flex: 1;">Cancel</button>
+				</div>
+			</form>
+		</div>
+	</div>
+</div>
+
 <footer>Solar data updates every 5 seconds. Configure solar parameters in config.py</footer>
 {% endblock %}
 
