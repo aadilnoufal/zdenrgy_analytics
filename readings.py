@@ -44,6 +44,9 @@ app = Flask(__name__)
 weather_data: Deque[Dict[str, Any]] = deque(maxlen=MAX_SAMPLES)
 _data_lock = threading.Lock()
 
+# Track last database insertion time
+_last_db_insertion_time = None
+
 # Debug / metrics state
 bytes_received = 0
 messages_parsed = 0
@@ -234,45 +237,45 @@ def _extract_json_objects(buffer: str):
 def _ingest_line(line: str) -> None:
 		reading = parse_reading(line)
 		if reading:
-				global messages_parsed, last_valid_raw
+				global messages_parsed, last_valid_raw, _last_db_insertion_time
+				
+				messages_parsed += 1
+				last_valid_raw = line[:500]
 				
 				# Store in memory for real-time display
 				with _data_lock:
 						weather_data.append(reading)
 				
-		# Store in database for persistence
-		try:
-				db = get_db_manager()
-				# Parse timestamp - keep as-is from sensor (GMT+8 China time)
-				# Database stores GMT+8, conversion to Qatar time happens on retrieval
-				timestamp = datetime.fromisoformat(reading['time_iso'])
-				if timestamp.tzinfo is None:
-						# Store as naive datetime (sensor's GMT+8 time)
-						timestamp = timestamp.replace(tzinfo=None)
-				
-				# Calculate irradiance if not present
-				irradiance = reading.get('irradiance')
-				if irradiance is None and reading.get('lux'):
-						irradiance = reading['lux'] / 127.0  # Convert lux to W/m²
-				
-				db.insert_sensor_reading(
-						temperature=reading.get('temp'),
-						humidity=reading.get('rh'),
-						lux=reading.get('lux'),
-						irradiance=irradiance,
-						timestamp=timestamp,
-						sensor_id=reading.get('id', 'unknown')
-				)
-				if DEBUG:
-						print(f"✅ Saved to DB: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-		except Exception as e:
-				print(f"⚠️  Failed to store reading in database: {e}")
-				
-				messages_parsed += 1
-				last_valid_raw = line[:500]
-				print(
-						f"Stored reading: t={reading['time_iso']} temp={reading['temp']:.2f}°C rh={reading['rh']:.2f}% lux={reading['lux']:.2f}"
-				)
+				# Store in database for persistence (throttled to once per minute)
+				try:
+						now = datetime.utcnow()
+						if _last_db_insertion_time is None or (now - _last_db_insertion_time).total_seconds() >= 60:
+								db = get_db_manager()
+								# Parse timestamp - keep as-is from sensor (GMT+8 China time)
+								# Database stores GMT+8, conversion to Qatar time happens on retrieval
+								timestamp = datetime.fromisoformat(reading['time_iso'])
+								if timestamp.tzinfo is None:
+										# Store as naive datetime (sensor's GMT+8 time)
+										timestamp = timestamp.replace(tzinfo=None)
+								
+								# Calculate irradiance if not present
+								irradiance = reading.get('irradiance')
+								if irradiance is None and reading.get('lux'):
+										irradiance = reading['lux'] / 127.0  # Convert lux to W/m²
+								
+								db.insert_sensor_reading(
+										temperature=reading.get('temp'),
+										humidity=reading.get('rh'),
+										lux=reading.get('lux'),
+										irradiance=irradiance,
+										timestamp=timestamp,
+										sensor_id=reading.get('id', 'unknown')
+								)
+								_last_db_insertion_time = now
+								if DEBUG:
+										print(f"✅ Saved to DB: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+				except Exception as e:
+						print(f"⚠️  Failed to store reading in database: {e}")
 		else:
 				if line.strip():  # avoid noise for empty splits
 						global invalid_messages, last_invalid_raw
