@@ -4,3 +4,5 @@ waitress>=2.1.0   # For Windows production (or cross-platform)
 psycopg2-binary==2.9.9  # PostgreSQL adapter
 python-dotenv==1.0.0  # Environment variable management
 requests>=2.31.0  # HTTP library for API data sources
+pandas>=2.0.0     # Data analysis
+numpy>=1.24.0     # Numerical computing

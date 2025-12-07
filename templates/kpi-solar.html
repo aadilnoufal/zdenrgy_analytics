@@ -980,9 +980,17 @@ async function uploadFile(file, fileType) {
             body: formData
         });
         
-        const result = await response.json();
+        let result;
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            result = await response.json();
+        } else {
+            const text = await response.text();
+            console.error("Server returned non-JSON response:", text);
+            throw new Error(`Server Error (${response.status}): ${text.substring(0, 100)}...`);
+        }
         
-        if (result.success) {
+        if (response.ok && result.success) {
             document.getElementById(statusId).className = 'status-dot uploaded';
             document.getElementById(infoId).innerHTML = 
                 `<span style="color: #2ecc71;">✓ ${file.name}</span><br>` +
