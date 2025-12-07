@@ -5,6 +5,503 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<style>
+	/* Analyzer Section Styles */
+	.analyzer-section {
+		background: linear-gradient(135deg, #1e2530 0%, #252b38 100%);
+		border: 1px solid #3a4150;
+		border-radius: 12px;
+		padding: 1.5rem;
+		margin-top: 1.5rem;
+	}
+	
+	.analyzer-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+		flex-wrap: wrap;
+		gap: 1rem;
+	}
+	
+	.analyzer-header h2 {
+		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.upload-zone {
+		border: 2px dashed #3a4150;
+		border-radius: 10px;
+		padding: 2rem;
+		text-align: center;
+		transition: all 0.3s ease;
+		cursor: pointer;
+		background: rgba(26, 29, 35, 0.5);
+	}
+	
+	.upload-zone:hover, .upload-zone.dragover {
+		border-color: #06d6a0;
+		background: rgba(6, 214, 160, 0.05);
+	}
+	
+	.upload-zone.uploaded {
+		border-color: #06d6a0;
+		border-style: solid;
+		background: rgba(6, 214, 160, 0.1);
+	}
+	
+	.upload-zone input[type="file"] {
+		display: none;
+	}
+	
+	.upload-icon {
+		font-size: 3rem;
+		margin-bottom: 1rem;
+	}
+	
+	.upload-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		gap: 1.5rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	.upload-card {
+		background: #1a1d23;
+		border-radius: 10px;
+		padding: 1.5rem;
+	}
+	
+	.upload-card h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.file-info {
+		font-size: 0.85rem;
+		color: #9aa4b1;
+		margin-top: 0.5rem;
+	}
+	
+	.file-info.success {
+		color: #06d6a0;
+	}
+	
+	.cleaning-dates-input {
+		background: #1a1d23;
+		border-radius: 10px;
+		padding: 1.5rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	.cleaning-dates-input h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1rem;
+	}
+	
+	.date-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+	}
+	
+	.date-tag {
+		background: #2d3341;
+		padding: 0.3rem 0.8rem;
+		border-radius: 20px;
+		font-size: 0.85rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.date-tag .remove {
+		cursor: pointer;
+		opacity: 0.7;
+	}
+	
+	.date-tag .remove:hover {
+		opacity: 1;
+		color: #ff7369;
+	}
+	
+	.analysis-controls {
+		display: flex;
+		gap: 1rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	
+	.capacity-input {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: #1a1d23;
+		padding: 0.5rem 1rem;
+		border-radius: 8px;
+	}
+	
+	.capacity-input input {
+		width: 60px;
+		background: #2d3341;
+		border: 1px solid #3a4150;
+		border-radius: 4px;
+		color: #eee;
+		padding: 0.4rem;
+		text-align: center;
+	}
+	
+	.run-analysis-btn {
+		background: linear-gradient(135deg, #06d6a0 0%, #05b88a 100%);
+		color: #1a1d23;
+		border: none;
+		padding: 0.8rem 2rem;
+		border-radius: 8px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		font-size: 1rem;
+	}
+	
+	.run-analysis-btn:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(6, 214, 160, 0.3);
+	}
+	
+	.run-analysis-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	
+	/* Results Section */
+	.results-section {
+		margin-top: 2rem;
+		display: none;
+	}
+	
+	.results-section.show {
+		display: block;
+	}
+	
+	.results-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	.result-card {
+		background: #1a1d23;
+		border-radius: 10px;
+		padding: 1.2rem;
+		text-align: center;
+	}
+	
+	.result-card.highlight {
+		background: linear-gradient(135deg, rgba(6, 214, 160, 0.15) 0%, rgba(6, 214, 160, 0.05) 100%);
+		border: 1px solid rgba(6, 214, 160, 0.3);
+	}
+	
+	.result-card.warning {
+		background: linear-gradient(135deg, rgba(255, 209, 102, 0.15) 0%, rgba(255, 209, 102, 0.05) 100%);
+		border: 1px solid rgba(255, 209, 102, 0.3);
+	}
+	
+	.result-card.danger {
+		background: linear-gradient(135deg, rgba(255, 115, 105, 0.15) 0%, rgba(255, 115, 105, 0.05) 100%);
+		border: 1px solid rgba(255, 115, 105, 0.3);
+	}
+	
+	.result-label {
+		font-size: 0.8rem;
+		color: #9aa4b1;
+		margin-bottom: 0.5rem;
+	}
+	
+	.result-value {
+		font-size: 1.8rem;
+		font-weight: 700;
+		color: #fff;
+	}
+	
+	.result-unit {
+		font-size: 0.9rem;
+		color: #9aa4b1;
+		margin-left: 0.3rem;
+	}
+	
+	.predictions-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1rem;
+		margin: 1.5rem 0;
+	}
+	
+	@media (max-width: 768px) {
+		.predictions-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	
+	.prediction-card {
+		background: #1a1d23;
+		border-radius: 10px;
+		padding: 1rem;
+		text-align: center;
+		border-left: 3px solid;
+	}
+	
+	.prediction-card.p95 { border-color: #06d6a0; }
+	.prediction-card.p90 { border-color: #ffd166; }
+	.prediction-card.p85 { border-color: #ff9f43; }
+	.prediction-card.p80 { border-color: #ff7369; }
+	
+	.prediction-label {
+		font-size: 0.85rem;
+		color: #9aa4b1;
+		margin-bottom: 0.3rem;
+	}
+	
+	.prediction-value {
+		font-size: 1.5rem;
+		font-weight: 600;
+	}
+	
+	.recommendations-box {
+		background: #1a1d23;
+		border-radius: 10px;
+		padding: 1.5rem;
+		margin-top: 1.5rem;
+	}
+	
+	.recommendations-box h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1rem;
+	}
+	
+	.recommendation-item {
+		padding: 0.5rem 0;
+		border-bottom: 1px solid #2a2f3a;
+		font-size: 0.95rem;
+	}
+	
+	.recommendation-item:last-child {
+		border-bottom: none;
+	}
+	
+	.chart-container-large {
+		height: 300px;
+		margin-top: 1.5rem;
+	}
+	
+	/* Loading spinner */
+	.spinner {
+		display: inline-block;
+		width: 20px;
+		height: 20px;
+		border: 2px solid #3a4150;
+		border-radius: 50%;
+		border-top-color: #06d6a0;
+		animation: spin 1s linear infinite;
+	}
+	
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+	
+	/* Tab navigation for analyzer */
+	.analyzer-tabs {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+		border-bottom: 1px solid #3a4150;
+		padding-bottom: 0.5rem;
+	}
+	
+	.analyzer-tab {
+		padding: 0.6rem 1.2rem;
+		background: transparent;
+		border: none;
+		color: #9aa4b1;
+		cursor: pointer;
+		border-radius: 6px 6px 0 0;
+		transition: all 0.2s;
+		font-size: 0.9rem;
+	}
+	
+	.analyzer-tab:hover {
+		color: #fff;
+		background: rgba(255,255,255,0.05);
+	}
+	
+	.analyzer-tab.active {
+		color: #06d6a0;
+		background: rgba(6, 214, 160, 0.1);
+		border-bottom: 2px solid #06d6a0;
+	}
+	
+	.tab-content {
+		display: none;
+	}
+	
+	.tab-content.active {
+		display: block;
+	}
+	
+	/* Progress indicator */
+	.data-status {
+		display: flex;
+		gap: 2rem;
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: #1a1d23;
+		border-radius: 8px;
+		flex-wrap: wrap;
+	}
+	
+	.status-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+	}
+	
+	.status-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: #3a4150;
+	}
+	
+	.status-dot.ready {
+		background: #06d6a0;
+	}
+	
+	.status-dot.pending {
+		background: #ffd166;
+	}
+	
+	.status-dot.uploaded {
+		background: #2ecc71;
+	}
+	
+	.status-dot.loading {
+		background: #f39c12;
+		animation: pulse 1s infinite;
+	}
+	
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
+	}
+	
+	/* Recommendation cards */
+	.recommendation {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 1rem;
+		margin-bottom: 0.75rem;
+		background: #1a1d23;
+		border-radius: 8px;
+		border-left: 4px solid #3a4150;
+	}
+	
+	.recommendation.critical {
+		border-left-color: #e74c3c;
+		background: rgba(231, 76, 60, 0.1);
+	}
+	
+	.recommendation.high {
+		border-left-color: #06d6a0;
+		background: rgba(6, 214, 160, 0.1);
+	}
+	
+	.recommendation.medium {
+		border-left-color: #f39c12;
+		background: rgba(243, 156, 18, 0.1);
+	}
+	
+	.recommendation.low {
+		border-left-color: #3498db;
+		background: rgba(52, 152, 219, 0.1);
+	}
+	
+	.rec-icon {
+		font-size: 1.2rem;
+	}
+	
+	/* Chart container for PR trend */
+	.chart-container-large {
+		height: 350px;
+		padding: 1rem 0;
+	}
+	
+	/* Date input styling */
+	.date-input {
+		padding: 0.5rem;
+		background: #2d3341;
+		color: #eee;
+		border: 1px solid #3a4150;
+		border-radius: 6px;
+		font-family: inherit;
+	}
+	
+	.date-input:focus {
+		outline: none;
+		border-color: #06d6a0;
+	}
+	
+	/* Analysis controls styling */
+	.capacity-input {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.capacity-input input {
+		width: 80px;
+		padding: 0.5rem;
+		background: #2d3341;
+		color: #eee;
+		border: 1px solid #3a4150;
+		border-radius: 6px;
+		text-align: center;
+		font-family: inherit;
+	}
+	
+	.capacity-input input:focus {
+		outline: none;
+		border-color: #06d6a0;
+	}
+	
+	/* Cleaning dates input section */
+	.cleaning-dates-input {
+		margin-top: 1.5rem;
+		padding: 1rem;
+		background: #1a1d23;
+		border-radius: 10px;
+	}
+	
+	/* Result card border coloring */
+	.result-card[style*="border-color: #2ecc71"] {
+		box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);
+	}
+	
+	.result-card[style*="border-color: #f39c12"] {
+		box-shadow: 0 0 10px rgba(243, 156, 18, 0.2);
+	}
+	
+	.result-card[style*="border-color: #e74c3c"] {
+		box-shadow: 0 0 10px rgba(231, 76, 60, 0.2);
+	}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -73,6 +570,236 @@
 	</div>
 </div>
 
+<!-- ============================================================== -->
+<!-- SOLAR CLEANING INTERVAL ANALYZER - NEW SECTION -->
+<!-- ============================================================== -->
+<div class="analyzer-section" id="analyzer-section">
+	<div class="analyzer-header">
+		<h2>🔬 Cleaning Interval Analyzer</h2>
+		<button class="nav-btn" onclick="clearAnalyzerData()" style="font-size: 0.85rem;">Clear Data</button>
+	</div>
+	
+	<!-- Data Status Indicator -->
+	<div class="data-status">
+		<div class="status-item">
+			<div class="status-dot" id="lux-status"></div>
+			<span>Lux/Temp CSV</span>
+		</div>
+		<div class="status-item">
+			<div class="status-dot" id="inverter-status"></div>
+			<span>Inverter CSV</span>
+		</div>
+		<div class="status-item">
+			<div class="status-dot" id="cleaning-status-dot"></div>
+			<span>Cleaning Dates (Optional)</span>
+		</div>
+	</div>
+	
+	<!-- Tabs -->
+	<div class="analyzer-tabs">
+		<button class="analyzer-tab active" data-tab="upload">📁 Upload Data</button>
+		<button class="analyzer-tab" data-tab="results">📊 Analysis Results</button>
+	</div>
+	
+	<!-- Upload Tab -->
+	<div class="tab-content active" id="tab-upload">
+		<div class="upload-grid">
+			<!-- Lux CSV Upload -->
+			<div class="upload-card">
+				<h3>📊 Lux/Temperature Data</h3>
+				<div class="upload-zone" id="lux-upload-zone" onclick="document.getElementById('lux-file').click()">
+					<input type="file" id="lux-file" accept=".csv" onchange="handleFileUpload(this, 'lux')">
+					<div class="upload-icon">📄</div>
+					<div>Click or drag CSV file here</div>
+					<div class="file-info">Per-minute: Timestamp, Temperature, Humidity, Lux</div>
+				</div>
+				<div class="file-info" id="lux-file-info"></div>
+			</div>
+			
+			<!-- Inverter CSV Upload -->
+			<div class="upload-card">
+				<h3>⚡ Inverter Generation Data</h3>
+				<div class="upload-zone" id="inverter-upload-zone" onclick="document.getElementById('inverter-file').click()">
+					<input type="file" id="inverter-file" accept=".csv" onchange="handleFileUpload(this, 'inverter')">
+					<div class="upload-icon">📄</div>
+					<div>Click or drag CSV file here</div>
+					<div class="file-info">Per 30-min: Date, Time, Generation (kWh)</div>
+				</div>
+				<div class="file-info" id="inverter-file-info"></div>
+			</div>
+		</div>
+		
+		<!-- Cleaning Dates Input -->
+		<div class="cleaning-dates-input">
+			<h3>🧹 Cleaning Dates (Optional)</h3>
+			<p style="font-size: 0.85rem; color: #9aa4b1; margin-bottom: 1rem;">
+				If no cleaning dates are added, analysis will track degradation since installation/first data point.
+			</p>
+			<div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+				<input type="date" id="cleaning-date-input" class="date-input">
+				<button class="nav-btn" onclick="addCleaningDate()">Add Date</button>
+			</div>
+			<div class="date-tags" id="cleaning-date-tags">
+				<!-- Tags will be added here -->
+			</div>
+		</div>
+		
+		<!-- Analysis Controls -->
+		<div class="analysis-controls">
+			<div class="capacity-input">
+				<label>System Capacity:</label>
+				<input type="number" id="system-capacity" value="10" min="0.1" step="0.1">
+				<span>kWp</span>
+			</div>
+			<div class="capacity-input">
+				<label>Lux Conversion Factor:</label>
+				<input type="number" id="lux-factor" value="165" min="50" max="300" step="1">
+				<span title="Divide lux by this to get W/m². Default: 165 for Qatar">ℹ️</span>
+			</div>
+			<button class="run-analysis-btn" id="run-analysis-btn" onclick="runAnalysis()" disabled>
+				🔬 Run Analysis
+			</button>
+			<span id="analysis-status" style="color: #9aa4b1; font-size: 0.9rem;"></span>
+		</div>
+	</div>
+	
+	<!-- Results Tab -->
+	<div class="tab-content" id="tab-results">
+		<div id="no-results" style="text-align: center; padding: 3rem; color: #9aa4b1;">
+			<div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+			<div>No analysis results yet. Upload data and run analysis first.</div>
+		</div>
+		
+		<div id="analysis-results" style="display: none;">
+			<!-- Summary Cards -->
+			<div class="results-grid">
+				<div class="result-card">
+					<div class="result-label">Data Period</div>
+					<div class="result-value" id="result-days">—</div>
+					<div class="result-unit">days</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Total Generation</div>
+					<div class="result-value" id="result-total-kwh">—</div>
+					<div class="result-unit">kWh</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Overall PR</div>
+					<div class="result-value" id="result-overall-pr">—</div>
+					<div class="result-unit">%</div>
+				</div>
+				<div class="result-card highlight">
+					<div class="result-label">Recommended Interval</div>
+					<div class="result-value" id="result-interval">—</div>
+					<div class="result-unit">days</div>
+				</div>
+			</div>
+			
+			<!-- Degradation Metrics -->
+			<h3 style="margin: 1.5rem 0 1rem;">📉 Degradation Analysis</h3>
+			<div class="results-grid">
+				<div class="result-card" id="baseline-card">
+					<div class="result-label">Baseline PR</div>
+					<div class="result-value" id="result-baseline-pr">—</div>
+					<div class="result-unit">%</div>
+				</div>
+				<div class="result-card" id="current-card">
+					<div class="result-label">Current PR</div>
+					<div class="result-value" id="result-current-pr">—</div>
+					<div class="result-unit">%</div>
+				</div>
+				<div class="result-card" id="degradation-card">
+					<div class="result-label">Performance Loss</div>
+					<div class="result-value" id="result-degradation">—</div>
+					<div class="result-unit">%</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Soiling Loss Index</div>
+					<div class="result-value" id="result-soiling">—</div>
+					<div class="result-unit">%</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Degradation Rate</div>
+					<div class="result-value" id="result-rate">—</div>
+					<div class="result-unit">%/day</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Days Since Baseline</div>
+					<div class="result-value" id="result-days-since">—</div>
+					<div class="result-unit">days</div>
+				</div>
+			</div>
+			
+			<!-- Capacity Predictions -->
+			<h3 style="margin: 1.5rem 0 1rem;">⏱️ Capacity Drop Predictions</h3>
+			<div class="predictions-grid">
+				<div class="prediction-card p95">
+					<div class="prediction-label">Drop to 95%</div>
+					<div class="prediction-value" id="pred-95">—</div>
+					<div style="font-size: 0.8rem; color: #9aa4b1;">days</div>
+				</div>
+				<div class="prediction-card p90">
+					<div class="prediction-label">Drop to 90%</div>
+					<div class="prediction-value" id="pred-90">—</div>
+					<div style="font-size: 0.8rem; color: #9aa4b1;">days</div>
+				</div>
+				<div class="prediction-card p85">
+					<div class="prediction-label">Drop to 85%</div>
+					<div class="prediction-value" id="pred-85">—</div>
+					<div style="font-size: 0.8rem; color: #9aa4b1;">days</div>
+				</div>
+				<div class="prediction-card p80">
+					<div class="prediction-label">Drop to 80%</div>
+					<div class="prediction-value" id="pred-80">—</div>
+					<div style="font-size: 0.8rem; color: #9aa4b1;">days</div>
+				</div>
+			</div>
+			
+			<!-- Temperature Analysis -->
+			<h3 style="margin: 1.5rem 0 1rem;">🌡️ Temperature Impact</h3>
+			<div class="results-grid">
+				<div class="result-card">
+					<div class="result-label">Measured Temp Coefficient</div>
+					<div class="result-value" id="result-temp-coef">—</div>
+					<div class="result-unit">%/°C</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Expected Coefficient</div>
+					<div class="result-value">-0.36</div>
+					<div class="result-unit">%/°C</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Avg Cell Temperature</div>
+					<div class="result-value" id="result-avg-temp">—</div>
+					<div class="result-unit">°C</div>
+				</div>
+				<div class="result-card">
+					<div class="result-label">Max Ambient Temperature</div>
+					<div class="result-value" id="result-max-temp">—</div>
+					<div class="result-unit">°C</div>
+				</div>
+			</div>
+			
+			<!-- Daily PR Trend Chart -->
+			<div class="card" style="margin-top: 1.5rem; background: #1a1d23;">
+				<h3>📈 Daily Performance Ratio Trend</h3>
+				<div class="chart-container-large">
+					<canvas id="chart-pr-trend"></canvas>
+				</div>
+			</div>
+			
+			<!-- Recommendations -->
+			<div class="recommendations-box">
+				<h3>💡 Recommendations</h3>
+				<div id="recommendations-list">
+					<!-- Recommendations will be populated here -->
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Existing Solar Array Configuration Section -->
 <div class="card" style="margin-top: 1.5rem;">
 	<h2>Solar Array Configuration</h2>
 	<table>
@@ -173,4 +900,505 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/kpi-solar.js') }}"></script>
+<script>
+// ============================================================
+// SOLAR CLEANING INTERVAL ANALYZER - JAVASCRIPT
+// ============================================================
+
+// State for analyzer
+let analyzerState = {
+    luxUploaded: false,
+    inverterUploaded: false,
+    cleaningDates: [],
+    prTrendChart: null
+};
+
+// Tab switching
+document.querySelectorAll('.analyzer-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.analyzer-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        this.classList.add('active');
+        const tabId = this.getAttribute('data-tab');
+        document.getElementById('tab-' + tabId).classList.add('active');
+    });
+});
+
+// Drag and drop handling
+function setupDropZone(zoneId, inputId, fileType) {
+    const zone = document.getElementById(zoneId);
+    if (!zone) return;
+    
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+    
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('dragover');
+    });
+    
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.endsWith('.csv')) {
+            uploadFile(file, fileType);
+        }
+    });
+}
+
+// Initialize drop zones
+setupDropZone('lux-upload-zone', 'lux-file', 'lux');
+setupDropZone('inverter-upload-zone', 'inverter-file', 'inverter');
+
+// File upload handler
+function handleFileUpload(input, fileType) {
+    const file = input.files[0];
+    if (file) {
+        uploadFile(file, fileType);
+    }
+}
+
+// Upload file to server
+async function uploadFile(file, fileType) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('file_type', fileType);
+    
+    const statusId = fileType + '-status';
+    const infoId = fileType + '-file-info';
+    const zoneId = fileType + '-upload-zone';
+    
+    try {
+        document.getElementById(statusId).className = 'status-dot loading';
+        document.getElementById(infoId).textContent = 'Uploading...';
+        
+        const response = await fetch('/api/analyzer/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById(statusId).className = 'status-dot uploaded';
+            document.getElementById(infoId).innerHTML = 
+                `<span style="color: #2ecc71;">✓ ${file.name}</span><br>` +
+                `<small>${result.rows || 0} rows loaded</small>`;
+            document.getElementById(zoneId).classList.add('uploaded');
+            
+            if (fileType === 'lux') analyzerState.luxUploaded = true;
+            if (fileType === 'inverter') analyzerState.inverterUploaded = true;
+            
+            updateRunButton();
+        } else {
+            throw new Error(result.error || 'Upload failed');
+        }
+    } catch (error) {
+        document.getElementById(statusId).className = 'status-dot';
+        document.getElementById(infoId).innerHTML = 
+            `<span style="color: #e74c3c;">✗ Error: ${error.message}</span>`;
+        console.error('Upload error:', error);
+    }
+}
+
+// Add cleaning date
+async function addCleaningDate() {
+    const input = document.getElementById('cleaning-date-input');
+    const dateStr = input.value;
+    
+    if (!dateStr) {
+        alert('Please select a date');
+        return;
+    }
+    
+    // Add to UI
+    if (!analyzerState.cleaningDates.includes(dateStr)) {
+        analyzerState.cleaningDates.push(dateStr);
+        analyzerState.cleaningDates.sort();
+        renderCleaningTags();
+        
+        // Send to server
+        try {
+            await fetch('/api/analyzer/cleaning-dates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dates: analyzerState.cleaningDates })
+            });
+            document.getElementById('cleaning-status-dot').className = 'status-dot uploaded';
+        } catch (error) {
+            console.error('Error saving cleaning dates:', error);
+        }
+    }
+    
+    input.value = '';
+}
+
+// Remove cleaning date
+async function removeCleaningDate(dateStr) {
+    analyzerState.cleaningDates = analyzerState.cleaningDates.filter(d => d !== dateStr);
+    renderCleaningTags();
+    
+    try {
+        await fetch('/api/analyzer/cleaning-dates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dates: analyzerState.cleaningDates })
+        });
+        if (analyzerState.cleaningDates.length === 0) {
+            document.getElementById('cleaning-status-dot').className = 'status-dot';
+        }
+    } catch (error) {
+        console.error('Error removing cleaning date:', error);
+    }
+}
+
+// Render cleaning date tags
+function renderCleaningTags() {
+    const container = document.getElementById('cleaning-date-tags');
+    container.innerHTML = analyzerState.cleaningDates.map(date => 
+        `<span class="date-tag">
+            ${date}
+            <span class="remove-tag" onclick="removeCleaningDate('${date}')">&times;</span>
+        </span>`
+    ).join('');
+}
+
+// Update run button state
+function updateRunButton() {
+    const btn = document.getElementById('run-analysis-btn');
+    const canRun = analyzerState.luxUploaded && analyzerState.inverterUploaded;
+    btn.disabled = !canRun;
+    if (canRun) {
+        btn.style.opacity = '1';
+    }
+}
+
+// Run analysis
+async function runAnalysis() {
+    const btn = document.getElementById('run-analysis-btn');
+    const status = document.getElementById('analysis-status');
+    const capacity = parseFloat(document.getElementById('system-capacity').value) || 10;
+    const luxFactor = parseFloat(document.getElementById('lux-factor').value) || 165;
+    
+    btn.disabled = true;
+    btn.textContent = '⏳ Analyzing...';
+    status.textContent = 'Processing data...';
+    
+    try {
+        const response = await fetch('/api/analyzer/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                capacity_kwp: capacity,
+                lux_conversion_factor: luxFactor
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            status.textContent = 'Analysis complete!';
+            displayResults(result);
+            
+            // Switch to results tab
+            document.querySelector('.analyzer-tab[data-tab="results"]').click();
+        } else {
+            // Show detailed error with debug info if available
+            let errorMsg = result.error || 'Analysis failed';
+            if (result.debug_info) {
+                console.log('Debug info:', result.debug_info);
+                if (result.debug_info.lux_date_range && result.debug_info.inverter_date_range) {
+                    errorMsg += `\n\nLux data: ${result.debug_info.lux_date_range.min} to ${result.debug_info.lux_date_range.max}`;
+                    errorMsg += `\nInverter data: ${result.debug_info.inverter_date_range.min} to ${result.debug_info.inverter_date_range.max}`;
+                }
+            }
+            throw new Error(errorMsg);
+        }
+    } catch (error) {
+        status.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message.replace(/\n/g, '<br>')}</span>`;
+        console.error('Analysis error:', error);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔬 Run Analysis';
+        updateRunButton();
+    }
+}
+
+// Display analysis results
+function displayResults(results) {
+    console.log('Displaying results:', results);
+    
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('analysis-results').style.display = 'block';
+    
+    // Summary - API returns: summary.data_range.days, summary.total_generation_kwh, summary.overall_pr
+    const summary = results.summary || {};
+    document.getElementById('result-days').textContent = summary.data_range?.days || '—';
+    document.getElementById('result-total-kwh').textContent = 
+        summary.total_generation_kwh ? summary.total_generation_kwh.toFixed(1) : '—';
+    document.getElementById('result-overall-pr').textContent = 
+        summary.overall_pr ? summary.overall_pr.toFixed(1) : '—';
+    
+    // Degradation - API returns: degradation.baseline_pr_percent, current_pr_percent, degradation_percent, etc.
+    const deg = results.degradation || {};
+    document.getElementById('result-baseline-pr').textContent = 
+        deg.baseline_pr_percent !== undefined ? deg.baseline_pr_percent.toFixed(1) : '—';
+    document.getElementById('result-current-pr').textContent = 
+        deg.current_pr_percent !== undefined ? deg.current_pr_percent.toFixed(1) : '—';
+    document.getElementById('result-degradation').textContent = 
+        deg.degradation_percent !== undefined ? deg.degradation_percent.toFixed(1) : '—';
+    document.getElementById('result-soiling').textContent = 
+        deg.soiling_loss_index !== undefined ? deg.soiling_loss_index.toFixed(1) : '—';
+    document.getElementById('result-rate').textContent = 
+        deg.degradation_rate_per_day !== undefined ? deg.degradation_rate_per_day.toFixed(3) : '—';
+    document.getElementById('result-days-since').textContent = deg.days_since_baseline || '—';
+    
+    // Color the degradation card based on value
+    const degradationCard = document.getElementById('degradation-card');
+    if (deg.degradation_percent !== undefined) {
+        if (deg.degradation_percent > 15) {
+            degradationCard.style.borderColor = '#e74c3c';
+        } else if (deg.degradation_percent > 10) {
+            degradationCard.style.borderColor = '#f39c12';
+        } else {
+            degradationCard.style.borderColor = '#2ecc71';
+        }
+    }
+    
+    // Predictions - API returns: degradation.days_to_95_percent, days_to_90_percent, etc.
+    document.getElementById('pred-95').textContent = deg.days_to_95_percent || '—';
+    document.getElementById('pred-90').textContent = deg.days_to_90_percent || '—';
+    document.getElementById('pred-85').textContent = deg.days_to_85_percent || '—';
+    document.getElementById('pred-80').textContent = deg.days_to_80_percent || '—';
+    
+    // Recommended interval
+    document.getElementById('result-interval').textContent = 
+        deg.recommended_interval_days || '—';
+    
+    // Temperature - API returns: temperature_analysis.measured_coefficient, avg_cell_temp, max_cell_temp
+    const temp = results.temperature_analysis || {};
+    document.getElementById('result-temp-coef').textContent = 
+        temp.measured_coefficient !== undefined ? temp.measured_coefficient.toFixed(3) : '—';
+    document.getElementById('result-avg-temp').textContent = 
+        temp.avg_cell_temp ? temp.avg_cell_temp.toFixed(1) : '—';
+    document.getElementById('result-max-temp').textContent = 
+        temp.max_ambient_temp ? temp.max_ambient_temp.toFixed(1) : (temp.max_cell_temp ? temp.max_cell_temp.toFixed(1) : '—');
+    
+    // Render PR trend chart - API returns: daily_data array with date, daily_pr, etc.
+    if (results.daily_data && results.daily_data.length > 0) {
+        renderPRTrendChart(results.daily_data);
+    }
+    
+    // Recommendations - API returns: recommendations array
+    renderRecommendations(results);
+}
+
+// Render PR Trend Chart
+function renderPRTrendChart(dailyData) {
+    const ctx = document.getElementById('chart-pr-trend');
+    if (!ctx) return;
+    
+    // Destroy existing chart
+    if (analyzerState.prTrendChart) {
+        analyzerState.prTrendChart.destroy();
+    }
+    
+    // API returns: date, daily_pr (already as ratio 0-1), actual_kwh, theoretical_kwh, avg_temp, avg_irradiance
+    const labels = dailyData.map(d => {
+        // Format date for display
+        const date = new Date(d.date);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    const prValues = dailyData.map(d => d.daily_pr); // Already in % from API
+    
+    analyzerState.prTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Performance Ratio',
+                data: prValues,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointBackgroundColor: '#3498db'
+            }, {
+                label: 'Target (85%)',
+                data: labels.map(() => 85),
+                borderColor: '#2ecc71',
+                borderDash: [5, 5],
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: false
+            }, {
+                label: 'Warning (75%)',
+                data: labels.map(() => 75),
+                borderColor: '#f39c12',
+                borderDash: [5, 5],
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 50,
+                    max: 100,
+                    title: { display: true, text: 'PR (%)' },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                },
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                }
+            },
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render recommendations
+function renderRecommendations(results) {
+    const container = document.getElementById('recommendations-list');
+    
+    // API returns recommendations array directly
+    if (results.recommendations && results.recommendations.length > 0) {
+        container.innerHTML = results.recommendations.map(rec => {
+            // Determine priority based on content
+            let priority = 'low';
+            let icon = '💡';
+            if (rec.includes('URGENT') || rec.includes('immediately')) {
+                priority = 'critical';
+                icon = '⚠️';
+            } else if (rec.includes('RECOMMENDED') || rec.includes('Schedule')) {
+                priority = 'medium';
+                icon = '📅';
+            } else if (rec.includes('GOOD') || rec.includes('✅')) {
+                priority = 'low';
+                icon = '✅';
+            } else if (rec.includes('Optimal') || rec.includes('interval')) {
+                priority = 'high';
+                icon = '🧹';
+            } else if (rec.includes('Degradation') || rec.includes('📉')) {
+                priority = 'medium';
+                icon = '📉';
+            }
+            
+            return `
+                <div class="recommendation ${priority}">
+                    <span class="rec-icon">${icon}</span>
+                    <span>${rec}</span>
+                </div>
+            `;
+        }).join('');
+    } else {
+        container.innerHTML = '<div class="recommendation low"><span class="rec-icon">ℹ️</span><span>No specific recommendations at this time.</span></div>';
+    }
+}
+
+// Clear analyzer data
+async function clearAnalyzerData() {
+    if (!confirm('Clear all uploaded data and results?')) return;
+    
+    try {
+        await fetch('/api/analyzer/clear', { method: 'POST' });
+        
+        // Reset state
+        analyzerState.luxUploaded = false;
+        analyzerState.inverterUploaded = false;
+        analyzerState.cleaningDates = [];
+        
+        // Reset UI
+        document.getElementById('lux-status').className = 'status-dot';
+        document.getElementById('inverter-status').className = 'status-dot';
+        document.getElementById('cleaning-status-dot').className = 'status-dot';
+        document.getElementById('lux-file-info').innerHTML = '';
+        document.getElementById('inverter-file-info').innerHTML = '';
+        document.getElementById('cleaning-date-tags').innerHTML = '';
+        document.getElementById('lux-upload-zone').classList.remove('uploaded');
+        document.getElementById('inverter-upload-zone').classList.remove('uploaded');
+        document.getElementById('analysis-results').style.display = 'none';
+        document.getElementById('no-results').style.display = 'block';
+        document.getElementById('analysis-status').textContent = '';
+        
+        // Reset file inputs
+        document.getElementById('lux-file').value = '';
+        document.getElementById('inverter-file').value = '';
+        
+        updateRunButton();
+        
+        // Switch to upload tab
+        document.querySelector('.analyzer-tab[data-tab="upload"]').click();
+        
+    } catch (error) {
+        console.error('Error clearing data:', error);
+    }
+}
+
+// Load existing status on page load
+async function loadAnalyzerStatus() {
+    try {
+        const response = await fetch('/api/analyzer/status');
+        const status = await response.json();
+        
+        if (status.lux_uploaded) {
+            analyzerState.luxUploaded = true;
+            document.getElementById('lux-status').className = 'status-dot uploaded';
+            document.getElementById('lux-file-info').innerHTML = 
+                `<span style="color: #2ecc71;">✓ Data loaded</span><br>` +
+                `<small>${status.lux_rows || 0} rows</small>`;
+            document.getElementById('lux-upload-zone').classList.add('uploaded');
+        }
+        
+        if (status.inverter_uploaded) {
+            analyzerState.inverterUploaded = true;
+            document.getElementById('inverter-status').className = 'status-dot uploaded';
+            document.getElementById('inverter-file-info').innerHTML = 
+                `<span style="color: #2ecc71;">✓ Data loaded</span><br>` +
+                `<small>${status.inverter_rows || 0} rows</small>`;
+            document.getElementById('inverter-upload-zone').classList.add('uploaded');
+        }
+        
+        if (status.cleaning_dates && status.cleaning_dates.length > 0) {
+            analyzerState.cleaningDates = status.cleaning_dates;
+            renderCleaningTags();
+            document.getElementById('cleaning-status-dot').className = 'status-dot uploaded';
+        }
+        
+        updateRunButton();
+        
+        // Load existing results if available
+        if (status.has_results) {
+            const resultsResp = await fetch('/api/analyzer/results');
+            const resultsData = await resultsResp.json();
+            if (resultsData.results) {
+                displayResults(resultsData.results);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading analyzer status:', error);
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalyzerStatus();
+});
+</script>
 {% endblock %}

@@ -72,7 +72,8 @@ class KPICalculator:
             display_name="Solar Generation",
             value=round(generation_kw, 3),
             unit="kW",
-            timestamp=datetime.utcnow().isoformat(),
+            # Use Qatar time (UTC+3) for the timestamp
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "irradiance": irradiance,
                 "panel_area": panel_area,
@@ -100,7 +101,8 @@ class KPICalculator:
             display_name="Est. Daily Solar Energy",
             value=round(daily_energy, 2),
             unit="kWh",
-            timestamp=datetime.utcnow().isoformat(),
+            # Use Qatar time (UTC+3)
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={"avg_sunlight_hours": avg_sunlight_hours}
         )
     
@@ -117,7 +119,7 @@ class KPICalculator:
             display_name="Building Load",
             value=round(load, 3),
             unit="kW",
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat()
         )
     
     def calculate_self_consumption_ratio(self) -> KPIResult:
@@ -141,7 +143,7 @@ class KPICalculator:
             display_name="Self-Consumption Ratio",
             value=round(ratio, 2),
             unit="%",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "solar_generation": solar_gen,
                 "building_load": building_load,
@@ -163,7 +165,7 @@ class KPICalculator:
             display_name="Battery State of Charge",
             value=round(soc, 1),
             unit="%",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "capacity": capacity,
                 "available_energy": round(available_energy, 2),
@@ -190,7 +192,7 @@ class KPICalculator:
             display_name="Est. Daily Cost Savings",
             value=round(savings, 2),
             unit="$",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "daily_energy": daily_energy,
                 "tariff": tariff,
@@ -214,7 +216,7 @@ class KPICalculator:
             display_name="Grid Export Revenue (hourly)",
             value=round(hourly_revenue, 3),
             unit="$/h",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "excess_power": round(excess, 3),
                 "feed_in_tariff": feed_in_tariff,
@@ -241,7 +243,7 @@ class KPICalculator:
             display_name="Est. Daily Carbon Offset",
             value=round(offset, 2),
             unit="kg CO₂",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat(),
             metadata={
                 "daily_energy": daily_energy,
                 "carbon_intensity": carbon_intensity,
@@ -261,7 +263,7 @@ class KPICalculator:
             display_name="Temperature",
             value=round(temp, 2),
             unit="°C",
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat()
         )
     
     def calculate_humidity_status(self) -> KPIResult:
@@ -273,7 +275,7 @@ class KPICalculator:
             display_name="Humidity",
             value=round(humidity, 2),
             unit="%",
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=(datetime.utcnow() + timedelta(hours=3)).isoformat()
         )
     
     # ==========================================================================

@@ -246,10 +246,10 @@ def _ingest_line(line: str) -> None:
 				with _data_lock:
 						weather_data.append(reading)
 				
-				# Store in database for persistence (throttled to once per minute)
+				# Store in database for persistence (throttled to once per 5 minutes)
 				try:
 						now = datetime.utcnow()
-						if _last_db_insertion_time is None or (now - _last_db_insertion_time).total_seconds() >= 60:
+						if _last_db_insertion_time is None or (now - _last_db_insertion_time).total_seconds() >= 300:
 								db = get_db_manager()
 								# Parse timestamp - keep as-is from sensor (GMT+8 China time)
 								# Database stores GMT+8, conversion to Qatar time happens on retrieval
@@ -386,10 +386,11 @@ def api_data():
 			formatted = []
 			for r in readings:
 				# Support either DB-shaped or API-shaped rows
-				# Return database timestamp as-is (GMT+8)
+				# Database stores GMT+8 (China time), convert to Qatar GMT+3
 				ts = r.get('timestamp', r.get('time'))
 				if isinstance(ts, datetime):
-					time_str = ts.isoformat()
+					ts_qatar = ts - timedelta(hours=5)
+					time_str = ts_qatar.isoformat()
 				else:
 					time_str = str(ts)
 
@@ -593,9 +594,11 @@ def export_csv():
 		# Write data rows
 		for row in rows:
 			timestamp, temp, humidity, lux, irradiance = row
-			# Format timestamp
+			# Format timestamp and convert to Qatar time
 			if isinstance(timestamp, datetime):
-				ts_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+				# Convert China (GMT+8) to Qatar (GMT+3)
+				ts_qatar = timestamp - timedelta(hours=5)
+				ts_str = ts_qatar.strftime('%Y-%m-%d %H:%M:%S')
 			else:
 				ts_str = str(timestamp)
 			
@@ -939,6 +942,247 @@ def api_cleaning_history():  # type: ignore
 				return jsonify({"history": history})
 		except Exception as e:
 				return jsonify({"error": str(e)}), 500
+
+
+# =============================================================================
+# SOLAR CLEANING ANALYZER API ROUTES
+# =============================================================================
+
+# Store analyzer instance and uploaded data in memory
+_analyzer_data = {
+		'lux_df': None,
+		'inverter_df': None,
+		'cleaning_dates': [],
+		'last_analysis': None
+}
+
+@app.route("/api/analyzer/upload", methods=["POST"])
+def api_analyzer_upload():
+		"""Upload CSV files for analysis"""
+		from solar_cleaning_analyzer import parse_lux_csv, parse_inverter_csv
+		import tempfile
+		import os
+		
+		try:
+				# Accept both 'type' and 'file_type' for flexibility
+				file_type = request.form.get('type') or request.form.get('file_type')  # 'lux' or 'inverter'
+				
+				print(f"[DEBUG] Upload request - form data: {dict(request.form)}")
+				print(f"[DEBUG] Upload request - files: {list(request.files.keys())}")
+				print(f"[DEBUG] file_type: {file_type}")
+				
+				if 'file' not in request.files:
+						return jsonify({"success": False, "error": "No file provided"}), 400
+				
+				file = request.files['file']
+				if file.filename == '':
+						return jsonify({"success": False, "error": "No file selected"}), 400
+				
+				if not file_type:
+						return jsonify({"success": False, "error": "File type not specified. Use 'lux' or 'inverter'"}), 400
+				
+				# Save to temp file and parse
+				with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as tmp:
+						file.save(tmp.name)
+						tmp_path = tmp.name
+				
+				try:
+						if file_type == 'lux':
+								df = parse_lux_csv(tmp_path)
+								_analyzer_data['lux_df'] = df
+								return jsonify({
+										"success": True,
+										"type": "lux",
+										"rows": len(df),
+										"date_range": {
+												"start": df['timestamp'].min().isoformat(),
+												"end": df['timestamp'].max().isoformat()
+										},
+										"preview": df.head(5).to_dict(orient='records')
+								})
+						elif file_type == 'inverter':
+								df = parse_inverter_csv(tmp_path)
+								_analyzer_data['inverter_df'] = df
+								return jsonify({
+										"success": True,
+										"type": "inverter",
+										"rows": len(df),
+										"date_range": {
+												"start": df['timestamp'].min().isoformat(),
+												"end": df['timestamp'].max().isoformat()
+										},
+										"total_kwh": round(df['actual_kwh'].sum(), 2),
+										"preview": df.head(5).to_dict(orient='records')
+								})
+						else:
+								return jsonify({"success": False, "error": "Invalid file type. Use 'lux' or 'inverter'"}), 400
+				finally:
+						os.unlink(tmp_path)
+						
+		except Exception as e:
+				import traceback
+				traceback.print_exc()
+				return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analyzer/cleaning-dates", methods=["POST"])
+def api_analyzer_cleaning_dates():
+		"""Add or update cleaning dates for analysis"""
+		try:
+				data = request.get_json() or {}
+				dates = data.get('dates', [])
+				
+				cleaning_dates = []
+				for date_str in dates:
+						try:
+								dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+								cleaning_dates.append(dt)
+						except:
+								try:
+										dt = datetime.strptime(date_str, '%Y-%m-%d')
+										cleaning_dates.append(dt)
+								except:
+										pass
+				
+				_analyzer_data['cleaning_dates'] = sorted(cleaning_dates)
+				
+				return jsonify({
+						"success": True,
+						"cleaning_dates": [d.isoformat() for d in _analyzer_data['cleaning_dates']]
+				})
+		except Exception as e:
+				return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analyzer/run", methods=["POST"])
+def api_analyzer_run():
+		"""Run the cleaning interval analysis"""
+		from solar_cleaning_analyzer import SolarCleaningAnalyzer, SYSTEM_CONFIG
+		
+		try:
+				data = request.get_json() or {}
+				
+				# Update system configuration if provided
+				capacity = data.get('capacity_kwp', 10.0)
+				SYSTEM_CONFIG.capacity_kwp = float(capacity)
+				
+				# Allow configuring lux-to-irradiance conversion factor
+				lux_factor = data.get('lux_conversion_factor', 165.0)
+				SYSTEM_CONFIG.lux_to_irradiance = float(lux_factor)
+				
+				print(f"📊 CONFIG: Capacity={SYSTEM_CONFIG.capacity_kwp} kWp, Lux factor={SYSTEM_CONFIG.lux_to_irradiance}")
+				
+				# Check if data is loaded
+				if _analyzer_data['lux_df'] is None:
+						return jsonify({"success": False, "error": "No lux data uploaded. Please upload lux CSV first."}), 400
+				if _analyzer_data['inverter_df'] is None:
+						return jsonify({"success": False, "error": "No inverter data uploaded. Please upload inverter CSV first."}), 400
+				
+				# Debug: Show date ranges
+				lux_df = _analyzer_data['lux_df']
+				inverter_df = _analyzer_data['inverter_df']
+				print(f"📊 DEBUG: Lux data - {len(lux_df)} rows, range: {lux_df['timestamp'].min()} to {lux_df['timestamp'].max()}")
+				print(f"📊 DEBUG: Inverter data - {len(inverter_df)} rows, range: {inverter_df['timestamp'].min()} to {inverter_df['timestamp'].max()}")
+				
+				# Re-calculate irradiance with updated conversion factor
+				lux_df['irradiance'] = (lux_df['lux'] / SYSTEM_CONFIG.lux_to_irradiance).clip(upper=SYSTEM_CONFIG.max_irradiance)
+				
+				# Create analyzer and load data
+				analyzer = SolarCleaningAnalyzer()
+				success, debug_info = analyzer.load_from_dataframes(
+						lux_df,
+						_analyzer_data['inverter_df'],
+						_analyzer_data['cleaning_dates']
+				)
+				
+				print(f"📊 DEBUG: Merge result - success={success}, debug_info={debug_info}")
+				
+				if not success:
+						error_msg = debug_info.get('error', 'Failed to merge data')
+						
+						# Build helpful error message
+						if not debug_info.get('overlap_found', True):
+								lux_range = debug_info.get('lux_date_range', {})
+								inv_range = debug_info.get('inverter_date_range', {})
+								error_msg = f"No date overlap found! Lux data: {lux_range.get('min', 'N/A')} to {lux_range.get('max', 'N/A')}, Inverter data: {inv_range.get('min', 'N/A')} to {inv_range.get('max', 'N/A')}"
+						elif debug_info.get('merged_rows', 0) == 0:
+								error_msg = f"Data exists but timestamps don't match after rounding to 30-min intervals. Lux samples: {debug_info.get('lux_sample_timestamps', [])}, Inverter samples: {debug_info.get('inverter_sample_timestamps', [])}"
+						
+						return jsonify({
+								"success": False, 
+								"error": error_msg,
+								"debug_info": debug_info
+						}), 400
+				
+				# Generate report
+				report = analyzer.generate_report()
+				
+				if not report.get('success'):
+						return jsonify({"success": False, "error": report.get('error', 'Analysis failed')}), 400
+				
+				# Store for later retrieval
+				_analyzer_data['last_analysis'] = report
+				
+				return jsonify(report)
+				
+		except Exception as e:
+				import traceback
+				traceback.print_exc()
+				return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analyzer/status")
+def api_analyzer_status():
+		"""Get current analyzer data status"""
+		status = {
+				"lux_loaded": _analyzer_data['lux_df'] is not None,
+				"inverter_loaded": _analyzer_data['inverter_df'] is not None,
+				"cleaning_dates": [d.isoformat() for d in _analyzer_data['cleaning_dates']],
+				"has_analysis": _analyzer_data['last_analysis'] is not None
+		}
+		
+		if _analyzer_data['lux_df'] is not None:
+				df = _analyzer_data['lux_df']
+				status['lux_info'] = {
+						"rows": len(df),
+						"date_range": {
+								"start": df['timestamp'].min().isoformat(),
+								"end": df['timestamp'].max().isoformat()
+						}
+				}
+		
+		if _analyzer_data['inverter_df'] is not None:
+				df = _analyzer_data['inverter_df']
+				status['inverter_info'] = {
+						"rows": len(df),
+						"date_range": {
+								"start": df['timestamp'].min().isoformat(),
+								"end": df['timestamp'].max().isoformat()
+						},
+						"total_kwh": round(df['actual_kwh'].sum(), 2)
+				}
+		
+		return jsonify(status)
+
+
+@app.route("/api/analyzer/results")
+def api_analyzer_results():
+		"""Get the last analysis results"""
+		if _analyzer_data['last_analysis'] is None:
+				return jsonify({"success": False, "error": "No analysis has been run yet"}), 404
+		
+		return jsonify(_analyzer_data['last_analysis'])
+
+
+@app.route("/api/analyzer/clear", methods=["POST"])
+def api_analyzer_clear():
+		"""Clear all uploaded data"""
+		_analyzer_data['lux_df'] = None
+		_analyzer_data['inverter_df'] = None
+		_analyzer_data['cleaning_dates'] = []
+		_analyzer_data['last_analysis'] = None
+		
+		return jsonify({"success": True, "message": "All analyzer data cleared"})
 
 
 def main():

@@ -331,10 +331,12 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             # Convert timestamps to Qatar time before extracting date
+            # Database stores GMT+8. Qatar is GMT+3.
+            # So we subtract 5 hours from the stored timestamp.
             cursor.execute("""
                 SELECT 
-                    MIN(timestamp AT TIME ZONE 'Asia/Qatar') as min_date,
-                    MAX(timestamp AT TIME ZONE 'Asia/Qatar') as max_date
+                    MIN(timestamp - INTERVAL '5 hours') as min_date,
+                    MAX(timestamp - INTERVAL '5 hours') as max_date
                 FROM sensor_readings;
             """)
             
