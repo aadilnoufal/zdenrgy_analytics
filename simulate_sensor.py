@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 TCP_HOST = "localhost"
 TCP_PORT = 6000
 SENSOR_ID = "sim_sensor_001"
-SEND_INTERVAL = 2  # seconds between readings
+SEND_INTERVAL = 60  # seconds between readings
 QATAR_TZ = ZoneInfo("Asia/Qatar")
 
 # Realistic sensor ranges
