@@ -249,7 +249,7 @@ def _ingest_line(line: str) -> None:
 				# Store in database for persistence (throttled to once per 5 minutes)
 				try:
 						now = datetime.utcnow()
-						if _last_db_insertion_time is None or (now - _last_db_insertion_time).total_seconds() >= 300:
+						if _last_db_insertion_time is None or (now - _last_db_insertion_time).total_seconds() >= 60:
 								db = get_db_manager()
 								# Parse timestamp - keep as-is from sensor (GMT+8 China time)
 								# Database stores GMT+8, conversion to Qatar time happens on retrieval
